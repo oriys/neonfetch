@@ -1,0 +1,26 @@
+pub fn ascii_logo() -> Vec<&'static str> {
+    vec![
+        "                     ..'          ",
+        "                 ,xNMM.           ",
+        "               .OMMMMo            ",
+        "               lMM\"               ",
+        "     .;loddo:.  .olloddol;.       ",
+        "   cKMMMMMMMMMMNWMMMMMMMMMM0:     ",
+        " .KMMMMMMMMMMMMMMMMMMMMMMMWd.     ",
+        " XMMMMMMMMMMMMMMMMMMMMMMMX.       ",
+        ";MMMMMMMMMMMMMMMMMMMMMMMM:        ",
+        ":MMMMMMMMMMMMMMMMMMMMMMMM:        ",
+        ".MMMMMMMMMMMMMMMMMMMMMMMMX.       ",
+        " kMMMMMMMMMMMMMMMMMMMMMMMMWd.     ",
+        " 'XMMMMMMMMMMMMMMMMMMMMMMMMMMk    ",
+        "  'XMMMMMMMMMMMMMMMMMMMMMMMMK.    ",
+        "    kMMMMMMMMMMMMMMMMMMMMMMd      ",
+        "     ;KMMMMMMMWXXWMMMMMMMk.       ",
+        "       \"cooc*\"    \"*coo'\"         ",
+        "                                  ",
+        "                                  ",
+        "                                  ",
+        "                                  ",
+        "                                  ",
+    ]
+}
