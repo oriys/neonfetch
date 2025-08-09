@@ -23,7 +23,13 @@ use util::ansi::parse_ansi_text;
 
 fn main() -> io::Result<()> {
     let args: Vec<String> = env::args().collect();
-    let loop_mode = args.iter().any(|a| a == "--loop" || a == "-l");
+    // Default behavior now: animated loop ON unless --fetch provided.
+    // Flags:
+    //   --fetch | -f   -> one-shot static output (disable loop)
+    //   --loop  | -l   -> explicit (kept for backward compatibility)
+    let fetch_mode = args.iter().any(|a| a == "--fetch" || a == "-f");
+    let explicit_loop = args.iter().any(|a| a == "--loop" || a == "-l");
+    let loop_mode = if fetch_mode { false } else { explicit_loop || true }; // default true
     let speed = parse_speed_argument(&args);
     let style = parse_style_argument(&args);
     let fire_mode = parse_fire_mode_argument(&args);
@@ -216,6 +222,7 @@ fn parse_style_argument(args: &[String]) -> AnimationStyle {
             return AnimationStyle::from_str(rest);
         }
     }
+    // Default style now explicitly classic (rainbow line sweep)
     AnimationStyle::Classic
 }
 fn parse_fire_mode_argument(args: &[String]) -> FireMode {

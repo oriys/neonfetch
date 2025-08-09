@@ -16,7 +16,8 @@ A fast, colorful, animated system info fetch tool for your terminal. Written in 
 - Fire mode selection: `--fire-mode basic|advanced`
 - Adjustable animation speed: `--speed <float>` (higher = faster phase progression)
 - Set color refresh rate independently of frame rate: `--color-fps <int>` (reduces flicker & CPU)
-- Static (one‑shot) output mode when no loop flag is provided
+- Animated mode is now the default (no flag needed)
+- Static (one‑shot) output mode with `--fetch` / `-f`
 - Efficient incremental redraw: only updates when color phase actually changes
 - HSV color space utilities with conversion to RGB
 - ANSI escape parsing utility separated for reuse
@@ -45,26 +46,27 @@ neonfetch [options]
 ```
 
 Common flags:
-- `--loop`                Run continuously with animation (omit for single static print)
-- `--style <name>`        Animation style: classic | wave | pulse | neon | matrix | fire
-- `--fire-mode <mode>`    For fire style: basic | advanced
+- `--fetch, -f`           One-shot system info (disable animation loop)
+- `--loop, -l`            Force loop mode (normally already default; kept for backward compatibility)
+- `--style <name>`        Animation style: classic | wave | pulse | neon | matrix | fire (default classic)
+- `--fire-mode <mode>`    For fire style: basic | advanced (default advanced)
 - `--speed <float>`       Animation speed multiplier (default 1.0)
-- `--color-fps <int>`     Color phase updates per second (decoupled from terminal frame rate)
+- `--color-fps <int>`     Color phase updates per second (decoupled from terminal frame rate, default 30)
 - `--help`                Show help
 
 Examples:
 ```
-# One-shot system info with colored ASCII logo
-neonfetch
+# One-shot system info (static)
+neonfetch --fetch
 
-# Continuous pulse animation faster than default
-neonfetch --loop --style pulse --speed 1.6
+# Continuous pulse animation (loop is default, flag optional)
+neonfetch --style pulse --speed 1.6
 
 # Neon style with reduced color updates to save CPU
-neonfetch --loop --style neon --color-fps 20
+neonfetch --style neon --color-fps 20
 
-# Fire animation in advanced mode
-neonfetch --loop --style fire --fire-mode advanced
+# Fire animation in advanced mode (explicit)
+neonfetch --style fire --fire-mode advanced
 ```
 
 ## Performance Notes
