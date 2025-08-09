@@ -2,6 +2,11 @@
 name = "neonfetch"
 version = "0.1.0"
 edition = "2024"
+description = "Fast colorful animated system info fetch tool with multiple ANSI animation styles"
+license = "MIT"
+repository = "https://github.com/oriys/neonfetch"
+homepage = "https://github.com/oriys/neonfetch"
+readme = "README.md"
 
 [dependencies]
 crossterm = "0.27"
