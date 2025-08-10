@@ -1,4 +1,9 @@
 use std::env;
+#[cfg(target_os = "linux")]
+use std::fs;
+#[cfg(target_os = "macos")]
+use libc;
+use std::process::Command;
 use sysinfo::{Disks, System};
 use super::ascii_logo;
 
@@ -65,14 +70,88 @@ pub fn generate_system_info() -> Vec<String> {
             .filter(|s| s.chars().any(|ch| ch.is_alphanumeric()))
             .unwrap_or_else(|| "Unknown CPU".to_string());
         let arch = std::env::consts::ARCH;
-        // Gather frequency stats (kHz in sysinfo -> MHz). If unavailable (0), omit.
-        let freqs: Vec<u64> = sys.cpus().iter().map(|c| c.frequency() as u64).filter(|f| *f > 0).collect();
-        let freq_part = if freqs.is_empty() {
-            String::new()
-        } else {
-            let avg = freqs.iter().sum::<u64>() as f64 / freqs.len() as f64; // MHz
-            format!(" @ {:.2} GHz", avg / 1000.0)
-        };
+        // Enhanced frequency detection
+        fn detect_cpu_base_freq_ghz(sys: &sysinfo::System, brand: &str) -> Option<f64> {
+            // 1. Try sysinfo (average of non-zero current frequencies) treat as MHz
+            let freqs: Vec<u64> = sys.cpus().iter().map(|c| c.frequency() as u64).filter(|f| *f > 0).collect();
+            if !freqs.is_empty() {
+                let avg_mhz = freqs.iter().sum::<u64>() as f64 / freqs.len() as f64;
+                if avg_mhz > 100.0 { // guard against bogus tiny values
+                    return Some(avg_mhz / 1000.0);
+                }
+            }
+            // 2. Platform-specific methods
+            #[cfg(target_os = "macos")]
+            {
+                // Prefer direct sysctlbyname (avoids spawning process)
+                unsafe {
+                    let mut hz: u64 = 0;
+                    let mut size = std::mem::size_of::<u64>();
+                    let name1 = std::ffi::CString::new("hw.cpufrequency").unwrap();
+                    if libc::sysctlbyname(name1.as_ptr(), &mut hz as *mut _ as *mut libc::c_void, &mut size, std::ptr::null_mut(), 0) == 0 {
+                        if hz > 0 { return Some(hz as f64 / 1_000_000_000.0); }
+                    }
+                    let mut hz_max: u64 = 0;
+                    size = std::mem::size_of::<u64>();
+                    let name2 = std::ffi::CString::new("hw.cpufrequency_max").unwrap();
+                    if libc::sysctlbyname(name2.as_ptr(), &mut hz_max as *mut _ as *mut libc::c_void, &mut size, std::ptr::null_mut(), 0) == 0 {
+                        if hz_max > 0 { return Some(hz_max as f64 / 1_000_000_000.0); }
+                    }
+                }
+                // hw.cpufrequency gives Hz
+                if let Ok(out) = Command::new("/usr/sbin/sysctl").arg("-n").arg("hw.cpufrequency").output() {
+                    if out.status.success() {
+                        if let Ok(s) = String::from_utf8(out.stdout) { if let Ok(hz) = s.trim().parse::<u64>() { if hz > 0 { return Some(hz as f64 / 1_000_000_000.0); } } }
+                    }
+                }
+                if let Ok(out) = Command::new("/usr/sbin/sysctl").arg("-n").arg("hw.cpufrequency_max").output() {
+                    if out.status.success() {
+                        if let Ok(s) = String::from_utf8(out.stdout) { if let Ok(hz) = s.trim().parse::<u64>() { if hz > 0 { return Some(hz as f64 / 1_000_000_000.0); } } }
+                    }
+                }
+                // Fallback: path-less sysctl (in case /usr/sbin not resolved) and parsing lines
+                if let Ok(out) = Command::new("sysctl").arg("hw.cpufrequency").output() {
+                    if out.status.success() { if let Ok(s) = String::from_utf8(out.stdout) {
+                        if let Some(val) = s.split(':').nth(1) { if let Ok(hz) = val.trim().parse::<u64>() { if hz>0 { return Some(hz as f64 / 1_000_000_000.0); } } }
+                    }}
+                }
+                if let Ok(out) = Command::new("sysctl").arg("hw.cpufrequency_max").output() {
+                    if out.status.success() { if let Ok(s) = String::from_utf8(out.stdout) {
+                        if let Some(val) = s.split(':').nth(1) { if let Ok(hz) = val.trim().parse::<u64>() { if hz>0 { return Some(hz as f64 / 1_000_000_000.0); } } }
+                    }}
+                }
+            }
+            #[cfg(target_os = "linux")]
+            {
+                // Try sysfs max freq (kHz)
+                for path in [
+                    "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq",
+                    "/sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq"
+                ] {
+                    if let Ok(s) = fs::read_to_string(path) { if let Ok(khz) = s.trim().parse::<u64>() { if khz > 0 { return Some(khz as f64 / 1_000_000.0); } } }
+                }
+                // Fallback /proc/cpuinfo first 'cpu MHz'
+                if let Ok(content) = fs::read_to_string("/proc/cpuinfo") {
+                    for line in content.lines() { if let Some(rest) = line.split(':').nth(1) { if line.to_ascii_lowercase().starts_with("cpu mhz") { if let Ok(mhz) = rest.trim().parse::<f64>() { if mhz > 100.0 { return Some(mhz / 1000.0); } } } } }
+                }
+            }
+            // 3. Parse brand string (look for e.g. '3.20GHz' or '2400 MHz')
+            let mut best: Option<f64> = None;
+            let lower = brand.to_ascii_lowercase();
+            // Simple regex-less scans
+            for token in lower.split_whitespace() {
+                if let Some(pos) = token.find("ghz") { // pattern like 3.20ghz
+                    let num = &token[..pos];
+                    if let Ok(v) = num.replace(|c: char| !c.is_ascii_digit() && c != '.', "").parse::<f64>() { if v > 0.1 { best = Some(best.map(|b| b.max(v)).unwrap_or(v)); } }
+                } else if let Some(pos) = token.find("mhz") { // 3200mhz
+                    let num = &token[..pos];
+                    if let Ok(v) = num.replace(|c: char| !c.is_ascii_digit() && c != '.', "").parse::<f64>() { if v > 100.0 { let ghz = v/1000.0; best = Some(best.map(|b| b.max(ghz)).unwrap_or(ghz)); } }
+                }
+            }
+            best
+        }
+        let freq_ghz = detect_cpu_base_freq_ghz(&sys, &brand_primary);
+        let freq_part = freq_ghz.map(|v| format!(" @ {:.2} GHz", v)).unwrap_or_default();
         info_lines.push(format!(
             "CPU: {} ({} cores, {}){}",
             brand_primary.trim(),
