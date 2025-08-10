@@ -7,27 +7,31 @@ Embedded below are the recordings of several animation styles. (If a video does 
 
 <table>
 	<tr>
-		<td align="center">
+		<td align="center" width="50%">
 			<b>neon</b><br>
-			<video width="260" muted loop playsinline autoplay src="neon.mp4"></video><br>
-			<sub><a href="neon.mp4">neon.mp4</a></sub>
+			<video width="300" muted loop playsinline autoplay controls src="neon.mp4">Your browser can't embed this video. <a href="neon.mp4">Download neon.mp4</a></video><br>
+			<code>--style neon</code><br>
+			<sub>Hue band + gentle breathing</sub>
 		</td>
-		<td align="center">
+		<td align="center" width="50%">
 			<b>wave</b><br>
-			<video width="260" muted loop playsinline autoplay src="wave.mp4"></video><br>
-			<sub><a href="wave.mp4">wave.mp4</a></sub>
+			<video width="300" muted loop playsinline autoplay controls src="wave.mp4">Your browser can't embed this video. <a href="wave.mp4">Download wave.mp4</a></video><br>
+			<code>--style wave</code><br>
+			<sub>Luminance wave sweep</sub>
 		</td>
 	</tr>
 	<tr>
 		<td align="center">
 			<b>matrix</b><br>
-			<video width="260" muted loop playsinline autoplay src="matrix.mp4"></video><br>
-			<sub><a href="matrix.mp4">matrix.mp4</a></sub>
+			<video width="300" muted loop playsinline autoplay controls src="matrix.mp4">Your browser can't embed this video. <a href="matrix.mp4">Download matrix.mp4</a></video><br>
+			<code>--style matrix</code><br>
+			<sub>Code rain variation</sub>
 		</td>
 		<td align="center">
 			<b>fire (advanced)</b><br>
-			<video width="260" muted loop playsinline autoplay src="fire.mp4"></video><br>
-			<sub><a href="fire.mp4">fire.mp4</a></sub>
+			<video width="300" muted loop playsinline autoplay controls src="fire.mp4">Your browser can't embed this video. <a href="fire.mp4">Download fire.mp4</a></video><br>
+			<code>--style fire --fire-mode advanced</code><br>
+			<sub>Multi-band flame gradient</sub>
 		</td>
 	</tr>
 </table>
