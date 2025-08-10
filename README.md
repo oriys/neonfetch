@@ -38,6 +38,16 @@ Embedded below are the recordings of several animation styles. (If a video does 
 
 > Autoplay hints: Chrome only autoplays if the video is muted (done) and often when not hidden. Controls removed to reduce chance of blocking. If it still doesn't autoplay (GitHub may defer), open the raw file or allow site media autoplay in Chrome site settings. Videos are MP4 (H.264).
 
+### Static Screenshots
+If videos do not load, here are static captures (click to open full size):
+
+<p align="center">
+	<img src="neon.png" alt="neon" width="320" />
+	<img src="wave.png" alt="wave" width="320" />
+	<img src="matrix.png" alt="matrix" width="320" />
+	<img src="fire.png" alt="fire" width="320" />
+</p>
+
 ## What it shows
 Host / OS / kernel / uptime / shell / terminal / CPU / GPU / memory / swap / disk usage / IP / locale + an OS ASCII logo.
 
