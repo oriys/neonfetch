@@ -42,6 +42,9 @@ pub fn calculate_matrix_color_at(
     } else {
         1.0
     };
+    if intensity == 0.0 {
+        return (0, 0, 0); // mark as invisible cell
+    }
     let g = (255.0 * intensity * flicker).clamp(0.0, 255.0) as u8;
     let o = (g as f32 * 0.12) as u8;
     (o, g, o)

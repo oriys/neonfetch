@@ -24,28 +24,11 @@ impl AnimationStyle {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum FireMode {
-    Basic,
-    Advanced,
-}
-
-impl FireMode {
-    pub fn from_str(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
-            "basic" | "b" => FireMode::Basic,
-            "advanced" | "a" => FireMode::Advanced,
-            _ => FireMode::Advanced,
-        }
-    }
-}
-
 // HSV to RGB conversion (used by neon / pulse styles)
 pub fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
     let c = v * s;
     let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
     let m = v - c;
-
     let (r_prime, g_prime, b_prime) = if h < 60.0 {
         (c, x, 0.0)
     } else if h < 120.0 {
@@ -59,11 +42,9 @@ pub fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
     } else {
         (c, 0.0, x)
     };
-
     let r = ((r_prime + m) * 255.0) as u8;
     let g = ((g_prime + m) * 255.0) as u8;
     let b = ((b_prime + m) * 255.0) as u8;
-
     (r, g, b)
 }
 

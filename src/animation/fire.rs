@@ -1,8 +1,10 @@
+/// Calculate the base fire color for a single cell (without spark overlay).
 pub fn calculate_fire_color_at(
     time: f32,
     row: usize,
     col: usize,
     term_height: usize,
+    _term_width: usize,
 ) -> (u8, u8, u8) {
     if term_height == 0 {
         return (255, 80, 0);
