@@ -51,40 +51,31 @@ fn show_animation_mode(
 ) -> io::Result<()> {
     let freq = 0.1f32;
     let spread = 3.0f32;
-    let mut lines = generate_system_info();
-    let mut parsed: Vec<Vec<(String, char)>> = lines.iter().map(|l| parse_ansi_text(l)).collect();
-    let mut last_refresh = Instant::now();
+    // Generate system info only once to avoid flicker from content changes.
+    let lines = generate_system_info();
+    let parsed: Vec<Vec<(String, char)>> = lines.iter().map(|l| parse_ansi_text(l)).collect();
     let start = Instant::now();
-    let mut global_counter = 0usize;
     let mut prev_widths: Vec<usize> = Vec::new();
-    let mut prev_line_count = 0usize;
-    let mut last_color_phase = -1i64;
-    let color_phase_hz = color_fps.max(1.0);
+    let mut last_frame_time: f32 = 0.0;
+    let target_fps = color_fps.clamp(5.0, 240.0); // reuse color_fps as desired smoothness
+    let frame_interval = 1.0 / target_fps;
     print!("\x1b[?25l\x1b[H");
     stdout().flush()?;
     loop {
         let elapsed = start.elapsed().as_secs_f32() * speed.max(0.05);
-        let color_phase = (elapsed * color_phase_hz) as i64;
-        let mut content_changed = false;
-        if last_refresh.elapsed().as_secs_f32() >= 1.0 {
-            lines = generate_system_info();
-            parsed = lines.iter().map(|l| parse_ansi_text(l)).collect();
-            last_refresh = Instant::now();
-            content_changed = true;
-        }
-        let need_color_update = color_phase != last_color_phase;
-        if !content_changed && !need_color_update {
-            let next_phase_time = ((last_color_phase + 1) as f32 / color_phase_hz).max(elapsed);
-            let dt = next_phase_time - elapsed;
-            thread::sleep(Duration::from_millis((dt * 1000.0).clamp(2.0, 30.0) as u64));
+        // Frame pacing for smooth continuous transitions
+        let dt_since = elapsed - last_frame_time;
+        if dt_since < frame_interval {
+            let sleep_ms = ((frame_interval - dt_since) * 1000.0).clamp(1.0, 20.0) as u64;
+            thread::sleep(Duration::from_millis(sleep_ms));
             continue;
         }
-        last_color_phase = color_phase;
+        last_frame_time = elapsed;
         let (tw, th) = size()?;
         let mut frame_buf = String::with_capacity(8192);
         let mut new_widths = Vec::with_capacity(lines.len());
         let max_lines = th as usize;
-        let mut line_offset = elapsed;
+    let mut line_offset = elapsed;
         for (li, row) in parsed.iter().take(max_lines).enumerate() {
             frame_buf.push_str(&format!("\x1b[{};1H", li + 1));
             let mut char_idx = 0f32;
@@ -106,12 +97,13 @@ fn show_animation_mode(
                     calculate_fire_color_at(elapsed, li, printed, th as usize)
                 } else {
                     let ci = line_offset + char_idx / spread;
-                    calculate_color(&style, freq, ci, elapsed, global_counter)
+                    // stable id per cell for smoother hue (avoid flicker from ever-growing global counter)
+                    let stable_id = li * tw as usize + printed;
+                    calculate_color(&style, freq, ci, elapsed, stable_id)
                 };
                 frame_buf.push_str(&format!("\x1b[38;2;{};{};{}m{}", r, g, b, ch));
                 printed += 1;
                 char_idx += 1.0;
-                global_counter += 1;
             }
             frame_buf.push_str("\x1b[0m");
             if let Some(pw) = prev_widths.get(li) {
@@ -122,16 +114,11 @@ fn show_animation_mode(
             new_widths.push(printed);
             line_offset += char_idx / spread;
         }
-        if prev_line_count > lines.len() {
-            for extra in lines.len()..prev_line_count {
-                frame_buf.push_str(&format!("\x1b[{};1H\x1b[2K", extra + 1));
-            }
-        }
+    // No dynamic line count changes now; skip clearing extra lines logic
         let mut out = stdout();
         out.write_all(frame_buf.as_bytes())?;
         out.flush()?;
         prev_widths = new_widths;
-        prev_line_count = lines.len();
     }
 }
 
@@ -222,8 +209,8 @@ fn parse_style_argument(args: &[String]) -> AnimationStyle {
             return AnimationStyle::from_str(rest);
         }
     }
-    // Default style now explicitly classic (rainbow line sweep)
-    AnimationStyle::Classic
+    // Default style now Neon
+    AnimationStyle::Neon
 }
 fn parse_fire_mode_argument(args: &[String]) -> FireMode {
     for i in 0..args.len() {

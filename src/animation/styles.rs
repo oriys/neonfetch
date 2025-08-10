@@ -2,7 +2,6 @@ use std::f32;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AnimationStyle {
-    Classic,
     Wave,
     Pulse,
     Neon,
@@ -13,13 +12,14 @@ pub enum AnimationStyle {
 impl AnimationStyle {
     pub fn from_str(s: &str) -> Self {
         match s.to_lowercase().as_str() {
-            "classic" | "c" => AnimationStyle::Classic,
+            // classic removed; map legacy aliases to Neon for backward compatibility
+            "classic" | "c" => AnimationStyle::Neon,
             "wave" | "w" => AnimationStyle::Wave,
             "pulse" | "p" => AnimationStyle::Pulse,
             "neon" | "n" => AnimationStyle::Neon,
             "matrix" | "m" => AnimationStyle::Matrix,
             "fire" | "f" => AnimationStyle::Fire,
-            _ => AnimationStyle::Classic,
+            _ => AnimationStyle::Neon,
         }
     }
 }
@@ -82,17 +82,6 @@ pub fn calculate_color(
     char_pos: usize,
 ) -> (u8, u8, u8) {
     match style {
-        AnimationStyle::Classic => {
-            let base_hue = (time * 12.0) % 360.0;
-            let span = 30.0_f32;
-            let direction = (time * 0.6).sin();
-            let centered = (((char_pos as f32) * 0.02).sin() * 0.5 + 0.5) - 0.5;
-            let offset = centered * direction * span;
-            let hue = (base_hue + offset + 360.0) % 360.0;
-            let sat = 0.55;
-            let val = 0.90;
-            hsv_to_rgb(hue, sat, val)
-        }
         AnimationStyle::Wave => {
             let wave_offset = (char_pos as f32 * 0.5 + time * 0.1).sin() * 50.0;
             rainbow(freq, i + wave_offset)

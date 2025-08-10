@@ -15,12 +15,8 @@ pub fn calculate_fire_color_at(
     let n2 = (col as f32 * 0.12 + adv * wind).cos() * 0.5 + 0.5;
     let n = (n1 * 0.6 + n2 * 0.4).clamp(0.0, 1.0);
     let base = h.powf(0.6);
-    let mut intensity = (0.25 + 0.75 * base * n).clamp(0.0, 1.2);
-    let spark =
-        (((time * 30.0 + col as f32 * 0.37 + row as f32 * 0.13).sin()) * 1000.0) as i32 % 127 == 0;
-    if spark {
-        intensity = (intensity * 1.35).min(1.0);
-    }
+    // Removed spark / firework random brightening effect for a steadier flame
+    let intensity = (0.25 + 0.75 * base * n).clamp(0.0, 1.0);
     let (r, g, b) = if intensity < 0.5 {
         let t = intensity / 0.5;
         let r = 180.0 + t * (255.0 - 180.0);
