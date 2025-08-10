@@ -4,6 +4,7 @@ use super::ascii_logo;
 
 pub fn generate_system_info() -> Vec<String> {
     let mut sys = System::new_all();
+    // Explicit refresh to ensure CPU list populated on some platforms
     sys.refresh_all();
 
     let ascii = ascii_logo();
@@ -54,19 +55,33 @@ pub fn generate_system_info() -> Vec<String> {
         .unwrap_or_else(|_| "unknown".to_string());
     info_lines.push(format!("Terminal: {}", terminal));
 
-    if let Some(cpu) = sys.cpus().first() {
+    if !sys.cpus().is_empty() {
         let cpu_count = sys.cpus().len();
-        let frequency = if cpu.frequency() > 0 {
-            format!("@ {:.2} GHz", cpu.frequency() as f64 / 1000.0)
+        let brand_primary = sys
+            .cpus()
+            .iter()
+            .find(|c| !c.brand().trim().is_empty())
+            .map(|c| c.brand().to_string())
+            .filter(|s| s.chars().any(|ch| ch.is_alphanumeric()))
+            .unwrap_or_else(|| "Unknown CPU".to_string());
+        let arch = std::env::consts::ARCH;
+        // Gather frequency stats (kHz in sysinfo -> MHz). If unavailable (0), omit.
+        let freqs: Vec<u64> = sys.cpus().iter().map(|c| c.frequency() as u64).filter(|f| *f > 0).collect();
+        let freq_part = if freqs.is_empty() {
+            String::new()
         } else {
-            "@ 4.46 GHz".to_string()
+            let avg = freqs.iter().sum::<u64>() as f64 / freqs.len() as f64; // MHz
+            format!(" @ {:.2} GHz", avg / 1000.0)
         };
         info_lines.push(format!(
-            "CPU: {} ({}) {}",
-            cpu.brand(),
+            "CPU: {} ({} cores, {}){}",
+            brand_primary.trim(),
             cpu_count,
-            frequency
+            arch,
+            freq_part
         ));
+    } else {
+        info_lines.push("CPU: Unknown".to_string());
     }
 
     if cfg!(target_os = "macos") {

@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build binaries
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            archive: tar.gz
+          - os: macos-14
+            target: aarch64-apple-darwin
+            archive: tar.gz
+          - os: macos-13
+            target: x86_64-apple-darwin
+            archive: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+          override: true
+
+      - name: Add Linux cross deps
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "[target.aarch64-unknown-linux-gnu]\nlinker = 'aarch64-linux-gnu-gcc'" >> ~/.cargo/config.toml
+
+      - name: Build (release)
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN=neonfetch
+          VERSION=${GITHUB_REF_NAME#v}
+          OUTDIR=dist
+          mkdir -p "$OUTDIR"
+          ARTIFACT_NAME="${BIN}-v${VERSION}-${{ matrix.target }}"
+          TARGET_DIR=target/${{ matrix.target }}/release
+          if [ '${{ matrix.archive }}' = 'zip' ]; then
+            (cd "$TARGET_DIR" && zip -9 "${ARTIFACT_NAME}.zip" "$BIN.exe")
+            mv "$TARGET_DIR/${ARTIFACT_NAME}.zip" "$OUTDIR/"
+          else
+            (cd "$TARGET_DIR" && tar -czf "${ARTIFACT_NAME}.tar.gz" "$BIN")
+            mv "$TARGET_DIR/${ARTIFACT_NAME}.tar.gz" "$OUTDIR/"
+          fi
+
+      - name: Upload artifact (workflow)
+        uses: actions/upload-artifact@v4
+        with:
+          name: neonfetch-${{ matrix.target }}
+          path: dist/*
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Collect files
+        id: files
+        run: |
+          echo "files=$(find artifacts -type f -maxdepth 2 -print0 | xargs -0 echo | tr ' ' '\n')" >> $GITHUB_OUTPUT
+      - name: Publish Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/**
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

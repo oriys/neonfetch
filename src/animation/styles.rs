@@ -67,24 +67,28 @@ pub fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
     (r, g, b)
 }
 
-fn rainbow(freq: f32, i: f32) -> (u8, u8, u8) {
-    let red = (f32::sin(freq * i + 0.0) * 127.0 + 128.0) as u8;
-    let green = (f32::sin(freq * i + 2.0 * std::f32::consts::PI / 3.0) * 127.0 + 128.0) as u8;
-    let blue = (f32::sin(freq * i + 4.0 * std::f32::consts::PI / 3.0) * 127.0 + 128.0) as u8;
-    (red, green, blue)
-}
+// (former rainbow helper removed after Classic style removal)
 
 pub fn calculate_color(
     style: &AnimationStyle,
-    freq: f32,
-    i: f32,
+    _freq: f32,
+    _i: f32,
     time: f32,
     char_pos: usize,
 ) -> (u8, u8, u8) {
     match style {
         AnimationStyle::Wave => {
-            let wave_offset = (char_pos as f32 * 0.5 + time * 0.1).sin() * 50.0;
-            rainbow(freq, i + wave_offset)
+            let spatial = char_pos as f32 * 0.35;
+            let phase_primary = spatial - time * 3.0;
+            let phase_secondary = char_pos as f32 * 0.10 - time * 0.7;
+            let w = phase_primary.sin();
+            let w_norm = w * 0.5 + 0.5;
+            let mut v = 0.35 + w_norm.powf(1.2) * 0.65;
+            let env = (phase_secondary.sin() * 0.5 + 0.5) * 0.25 + 0.75;
+            v = (v * env).min(1.0);
+            let hue = (time * 8.0) % 360.0;
+            let sat = 0.65;
+            hsv_to_rgb(hue, sat, v)
         }
         AnimationStyle::Pulse => {
             let base_hue = (time * 25.0) % 360.0;
