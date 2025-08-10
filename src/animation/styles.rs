@@ -7,6 +7,7 @@ pub enum AnimationStyle {
     Neon,
     Matrix,
     Fire,
+    Fall,
 }
 
 impl AnimationStyle {
@@ -19,6 +20,7 @@ impl AnimationStyle {
             "neon" | "n" => AnimationStyle::Neon,
             "matrix" | "m" => AnimationStyle::Matrix,
             "fire" | "f" => AnimationStyle::Fire,
+            "fall" | "stack" | "s" => AnimationStyle::Fall,
             _ => AnimationStyle::Neon,
         }
     }
@@ -110,5 +112,6 @@ pub fn calculate_color(
         }
     AnimationStyle::Matrix => (0, 255, 0), // Actual color generated in matrix::calculate_matrix_color_at
     AnimationStyle::Fire => (255, 80, 0),  // Actual color generated in fire::calculate_fire_color_at
+    AnimationStyle::Fall => (200, 200, 200), // Actual color generated in fall simulation renderer
     }
 }
