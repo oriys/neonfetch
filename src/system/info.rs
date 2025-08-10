@@ -12,6 +12,63 @@ pub fn generate_system_info() -> Vec<String> {
     // Explicit refresh to ensure CPU list populated on some platforms
     sys.refresh_all();
 
+    // Helper: host model
+    fn detect_host_model() -> Option<String> {
+        #[cfg(target_os = "macos")]
+        {
+            // hw.model (e.g. Mac14,12) then try system_profiler for friendly name
+            use std::process::Command;
+            if let Ok(out) = Command::new("/usr/sbin/sysctl").arg("-n").arg("hw.model").output() {
+                if out.status.success() {
+                    if let Ok(mut s) = String::from_utf8(out.stdout) { s=s.trim().to_string(); if !s.is_empty() { return Some(s); } }
+                }
+            }
+        }
+        #[cfg(target_os = "linux")]
+        {
+            // DMI product name
+            for path in [
+                "/sys/devices/virtual/dmi/id/product_name",
+                "/sys/devices/virtual/dmi/id/board_name"
+            ] {
+                if let Ok(s) = std::fs::read_to_string(path) { let v = s.trim(); if !v.is_empty() && v != "To Be Filled By O.E.M." { return Some(v.to_string()); } }
+            }
+        }
+        None
+    }
+
+    // Helper: GPU info (first adapter)
+    fn detect_gpu_info() -> Option<String> {
+        #[cfg(target_os = "macos")]
+        {
+            use std::process::Command;
+            if let Ok(out) = Command::new("/usr/sbin/system_profiler").args(["SPDisplaysDataType","-detailLevel","mini"]).output() {
+                if out.status.success() { if let Ok(text) = String::from_utf8(out.stdout) {
+                    for line in text.lines() {
+                        let line_trim = line.trim();
+                        if line_trim.starts_with("Chipset Model:") { return Some(line_trim.replace("Chipset Model:", "").trim().to_string()); }
+                        if line_trim.starts_with("Graphics:") { return Some(line_trim.replace("Graphics:", "").trim().to_string()); }
+                    }
+                }}
+            }
+        }
+        #[cfg(target_os = "linux")]
+        {
+            use std::process::Command;
+            if let Ok(out) = Command::new("lspci").output() {
+                if out.status.success() { if let Ok(text) = String::from_utf8(out.stdout) {
+                    for line in text.lines() {
+                        if line.to_ascii_lowercase().contains("vga") || line.to_ascii_lowercase().contains("3d controller") {
+                            if let Some(pos) = line.find(':') { return Some(line[pos+1..].trim().to_string()); }
+                            else { return Some(line.trim().to_string()); }
+                        }
+                    }
+                }}
+            }
+        }
+        None
+    }
+
     let ascii = ascii_logo();
     let info: Vec<String> = ascii.into_iter().map(|s| s.to_string()).collect();
 
@@ -24,23 +81,14 @@ pub fn generate_system_info() -> Vec<String> {
 
     if let Some(os_name) = System::name() {
         if let Some(os_version) = System::os_version() {
-            if cfg!(target_os = "macos") {
-                info_lines.push(format!("OS: {} {} arm64", os_name, os_version));
-            } else {
-                info_lines.push(format!("OS: {} {}", os_name, os_version));
-            }
+            info_lines.push(format!("OS: {} {} ({})", os_name, os_version, std::env::consts::ARCH));
         } else {
-            info_lines.push(format!("OS: {}", os_name));
+            info_lines.push(format!("OS: {} ({})", os_name, std::env::consts::ARCH));
         }
-    } else {
-        info_lines.push("OS: Unknown".to_string());
-    }
+    } else { info_lines.push("OS: Unknown".to_string()); }
 
-    if cfg!(target_os = "macos") {
-        info_lines.push("Host: Mac Mini (2024)".to_string());
-    } else {
-        info_lines.push("Host: Unknown".to_string());
-    }
+    let host_line = detect_host_model().unwrap_or_else(|| "Unknown".to_string());
+    info_lines.push(format!("Host: {}", host_line));
 
     if let Some(kernel_version) = System::kernel_version() {
         info_lines.push(format!("Kernel: {}", kernel_version));
@@ -159,15 +207,172 @@ pub fn generate_system_info() -> Vec<String> {
             arch,
             freq_part
         ));
+        // Add physical vs logical core detail if available
+        if let Some(phys) = sys.physical_core_count() {
+            if phys as usize != cpu_count {
+                info_lines.push(format!("Cores: {} physical / {} logical", phys, cpu_count));
+            }
+        } else {
+            info_lines.push(format!("Cores: {} logical", cpu_count));
+        }
     } else {
         info_lines.push("CPU: Unknown".to_string());
     }
 
-    if cfg!(target_os = "macos") {
-        info_lines.push("GPU: Apple M4 (10) @ 1.58 GHz [Integrated]".to_string());
-    } else {
-        info_lines.push("GPU: Unknown".to_string());
+    let gpu_info = detect_gpu_info().unwrap_or_else(|| "Unknown".to_string());
+    info_lines.push(format!("GPU: {}", gpu_info));
+
+    // Resolution detection
+    fn detect_resolution() -> Option<String> {
+        #[cfg(target_os = "macos")]
+        {
+            use std::process::Command;
+            if let Ok(out) = Command::new("/usr/sbin/system_profiler")
+                .args(["SPDisplaysDataType", "-detailLevel", "mini"])
+                .output()
+            {
+                if out.status.success() {
+                    if let Ok(text) = String::from_utf8(out.stdout) {
+                        for line in text.lines() {
+                            let l = line.trim();
+                            if l.starts_with("Resolution:") {
+                                return Some(l.replace("Resolution:", "").trim().to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        #[cfg(target_os = "linux")]
+        {
+            use std::process::Command;
+            if let Ok(out) = Command::new("xrandr").arg("--query").output() {
+                if out.status.success() { if let Ok(text) = String::from_utf8(out.stdout) {
+                    for line in text.lines() {
+                        if line.contains(" connected primary") || line.contains(" connected ") {
+                            // pattern: eDP-1 connected primary 2560x1600+0+0 ...
+                            for part in line.split_whitespace() { if part.contains('x') && part.chars().all(|c| c.is_ascii_digit() || c=='x' || c=='+' ) && part.contains('+') { let res = part.split('+').next().unwrap(); return Some(res.to_string()); } }
+                        }
+                    }
+                }}
+            }
+        }
+        None
     }
+    if let Some(res) = detect_resolution() { info_lines.push(format!("Resolution: {}", res)); }
+
+    // Battery detection
+    fn detect_battery() -> Option<String> {
+        #[cfg(target_os = "macos")]
+        {
+            use std::process::Command;
+            if let Ok(out) = Command::new("pmset").args(["-g", "batt"]).output() {
+                if out.status.success() {
+                    if let Ok(text) = String::from_utf8(out.stdout) {
+                        for line in text.lines() {
+                            if line.contains('%') {
+                                if let Some(pct_part) = line.split('%').next() {
+                                    // Extract trailing digits
+                                    let mut digits = String::new();
+                                    for ch in pct_part.chars().rev() {
+                                        if ch.is_ascii_digit() {
+                                            digits.insert(0, ch);
+                                        } else if !digits.is_empty() {
+                                            break;
+                                        }
+                                    }
+                                    if !digits.is_empty() {
+                                        let status = if line.contains("discharging") {
+                                            "discharging"
+                                        } else if line.contains("charging") {
+                                            "charging"
+                                        } else if line.contains("charged") {
+                                            "charged"
+                                        } else {
+                                            ""
+                                        };
+                                        return Some(format!("{}% {}", digits, status));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        #[cfg(target_os = "linux")]
+        {
+            use std::fs;
+            // Look for BAT* directories
+            if let Ok(entries) = std::fs::read_dir("/sys/class/power_supply") {
+                for e in entries.flatten() {
+                    let name = e.file_name().to_string_lossy().into_owned();
+                    if name.starts_with("BAT") || name.to_ascii_lowercase().contains("battery") {
+                        let base = e.path();
+                        let cap = fs::read_to_string(base.join("capacity")).ok();
+                        let stat = fs::read_to_string(base.join("status")).ok();
+                        if let Some(cap) = cap { let cap_trim = cap.trim(); if !cap_trim.is_empty() { let s = stat.unwrap_or_default(); return Some(format!("{}% {}", cap_trim, s.trim())); } }
+                    }
+                }
+            }
+        }
+        None
+    }
+    if let Some(batt) = detect_battery() { info_lines.push(format!("Battery: {}", batt)); }
+
+    // Package manager installed count
+    fn detect_pkg_count() -> Option<String> {
+        use std::process::Command;
+        // (cmd, args, name, parse_fn)
+        let candidates: &[(&str,&[&str],&str)] = &[
+            ("brew", &["list"], "brew"),
+            ("pacman", &["-Q"], "pacman"),
+            ("dpkg-query", &["-f","${binary:Package}\n","-W"], "dpkg"),
+            ("apt", &["list","--installed"], "apt"),
+            ("rpm", &["-qa"], "rpm"),
+            ("flatpak", &["list"], "flatpak"),
+        ];
+        for (cmd, args, label) in candidates {
+            if let Ok(out) = Command::new(cmd).args(*args).output() {
+                if out.status.success() { if let Ok(text) = String::from_utf8(out.stdout) {
+                    let mut count = 0usize;
+                    for line in text.lines() { if !line.trim().is_empty() { count+=1; } }
+                    if count>0 { return Some(format!("{} ({} pkgs)", label, count)); }
+                }}
+            }
+        }
+        None
+    }
+    if let Some(pkgs) = detect_pkg_count() { info_lines.push(format!("Packages: {}", pkgs)); }
+
+    // Temperature sensors (simple average / first) Linux only; macOS left N/A for now
+    fn detect_temperature() -> Option<String> {
+        #[cfg(target_os = "linux")]
+        {
+            use std::fs;
+            let mut temps = Vec::new();
+            if let Ok(entries) = fs::read_dir("/sys/class/thermal") { for e in entries.flatten() { let p = e.path(); if p.join("type").exists() && p.join("temp").exists() { if let Ok(t) = fs::read_to_string(p.join("temp")) { if let Ok(v) = t.trim().parse::<i64>() { // milliC
+                        if v>0 { temps.push(v as f64 / 1000.0); }
+                    } } } } }
+            if temps.is_empty() {
+                // Try hwmon
+                if let Ok(entries) = fs::read_dir("/sys/class/hwmon") {
+                    for e in entries.flatten() {
+                        let p = e.path();
+                        for idx in 1..=5 {
+                            let file = p.join(format!("temp{}{}_input", idx, "")); // build tempX_input
+                            if let Ok(t) = fs::read_to_string(&file) {
+                                if let Ok(v) = t.trim().parse::<i64>() { if v>0 { temps.push(v as f64/1000.0); } }
+                            }
+                        }
+                    }
+                }
+            }
+            if !temps.is_empty() { let avg = temps.iter().sum::<f64>() / temps.len() as f64; return Some(format!("{:.1}°C", avg)); }
+        }
+        None
+    }
+    if let Some(temp) = detect_temperature() { info_lines.push(format!("Temp: {}", temp)); }
 
     let total_memory = sys.total_memory();
     let used_memory = sys.used_memory();
