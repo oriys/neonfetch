@@ -9,13 +9,13 @@ Embedded below are the recordings of several animation styles. (If a video does 
 	<tr>
 		<td align="center" width="50%">
 			<b>neon</b><br>
-			<video width="300" muted loop playsinline autoplay controls src="neon.mp4">Your browser can't embed this video. <a href="neon.mp4">Download neon.mp4</a></video><br>
+			<video width="300" muted autoplay loop playsinline preload="auto" src="neon.mp4">Your browser can't embed this video. <a href="neon.mp4">Download neon.mp4</a></video><br>
 			<code>--style neon</code><br>
 			<sub>Hue band + gentle breathing</sub>
 		</td>
 		<td align="center" width="50%">
 			<b>wave</b><br>
-			<video width="300" muted loop playsinline autoplay controls src="wave.mp4">Your browser can't embed this video. <a href="wave.mp4">Download wave.mp4</a></video><br>
+			<video width="300" muted autoplay loop playsinline preload="auto" src="wave.mp4">Your browser can't embed this video. <a href="wave.mp4">Download wave.mp4</a></video><br>
 			<code>--style wave</code><br>
 			<sub>Luminance wave sweep</sub>
 		</td>
@@ -23,20 +23,20 @@ Embedded below are the recordings of several animation styles. (If a video does 
 	<tr>
 		<td align="center">
 			<b>matrix</b><br>
-			<video width="300" muted loop playsinline autoplay controls src="matrix.mp4">Your browser can't embed this video. <a href="matrix.mp4">Download matrix.mp4</a></video><br>
+			<video width="300" muted autoplay loop playsinline preload="auto" src="matrix.mp4">Your browser can't embed this video. <a href="matrix.mp4">Download matrix.mp4</a></video><br>
 			<code>--style matrix</code><br>
 			<sub>Code rain variation</sub>
 		</td>
 		<td align="center">
 			<b>fire (advanced)</b><br>
-			<video width="300" muted loop playsinline autoplay controls src="fire.mp4">Your browser can't embed this video. <a href="fire.mp4">Download fire.mp4</a></video><br>
+			<video width="300" muted autoplay loop playsinline preload="auto" src="fire.mp4">Your browser can't embed this video. <a href="fire.mp4">Download fire.mp4</a></video><br>
 			<code>--style fire --fire-mode advanced</code><br>
 			<sub>Multi-band flame gradient</sub>
 		</td>
 	</tr>
 </table>
 
-> Videos are provided as MP4 (H.264) for broad browser compatibility.
+> Autoplay hints: Chrome only autoplays if the video is muted (done) and often when not hidden. Controls removed to reduce chance of blocking. If it still doesn't autoplay (GitHub may defer), open the raw file or allow site media autoplay in Chrome site settings. Videos are MP4 (H.264).
 
 ## What it shows
 Host / OS / kernel / uptime / shell / terminal / CPU / GPU / memory / swap / disk usage / IP / locale + an OS ASCII logo.
