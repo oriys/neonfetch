@@ -2,8 +2,17 @@ use crate::animation::styles::hsv_to_rgb;
 
 // Aurora effect: multiple vertical/diagonal translucent bands drifting with layered sine + pseudo-noise.
 // Kept lightweight (no external noise lib).
-pub fn calculate_aurora_color_at(time: f32, row: usize, col: usize, term_w: usize, term_h: usize, speed: f32) -> (u8,u8,u8) {
-    if term_w == 0 || term_h == 0 { return (0,0,0); }
+pub fn calculate_aurora_color_at(
+    time: f32,
+    row: usize,
+    col: usize,
+    term_w: usize,
+    term_h: usize,
+    speed: f32,
+) -> (u8, u8, u8) {
+    if term_w == 0 || term_h == 0 {
+        return (0, 0, 0);
+    }
     let t = time * (0.25 * speed.max(0.05));
     let x = col as f32 / term_w as f32; // 0..1
     let y = row as f32 / term_h as f32; // 0..1
@@ -15,7 +24,7 @@ pub fn calculate_aurora_color_at(time: f32, row: usize, col: usize, term_w: usiz
     let band_width = 0.22;
     let falloff = |center: f32, pos: f32| -> f32 {
         let d = (pos - center).abs();
-        (- (d*d) / (2.0 * band_width * band_width)).exp()
+        (-(d * d) / (2.0 * band_width * band_width)).exp()
     };
     let b1 = falloff(c1, x);
     let b2 = falloff(c2, x);

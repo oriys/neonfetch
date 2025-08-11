@@ -12,8 +12,10 @@ pub fn calculate_plasma_color_at(
     term_w: usize,
     term_h: usize,
     speed: f32,
-) -> (u8,u8,u8) {
-    if term_w == 0 || term_h == 0 { return (0,0,0); }
+) -> (u8, u8, u8) {
+    if term_w == 0 || term_h == 0 {
+        return (0, 0, 0);
+    }
     let s = speed.clamp(0.05, 10.0);
     // Normalize coordinates to 0..1 for scale invariance
     let x = col as f32 / term_w as f32;
@@ -35,6 +37,6 @@ pub fn calculate_plasma_color_at(
     let mut val = 0.30 + (vn.powf(0.8)) * 0.70;
     // Subtle global breathing
     val *= (time * 0.6).sin() * 0.05 + 0.97;
-    let (r,g,b) = hsv_to_rgb(hue, sat.min(1.0), val.min(1.0));
-    (r,g,b)
+    let (r, g, b) = hsv_to_rgb(hue, sat.min(1.0), val.min(1.0));
+    (r, g, b)
 }

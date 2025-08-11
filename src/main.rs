@@ -3,18 +3,9 @@ mod system; // system information collection
 mod util; // shared utilities (e.g. ANSI parsing)
 
 use animation::{
-    AnimationStyle,
-    calculate_color,
-    calculate_fire_color_at,
-    calculate_matrix_color_at,
-    calculate_marquee_color_at,
-    calculate_plasma_color_at,
-    calculate_aurora_color_at,
+    AnimationStyle, calculate_aurora_color_at, calculate_color, calculate_fire_color_at,
+    calculate_lava_color_at, calculate_matrix_color_at, calculate_plasma_color_at,
     calculate_pulse_rings_color_at,
-    sample_meteor_color,
-    update_meteors,
-    Meteor,
-    calculate_lava_color_at,
 };
 use system::generate_system_info;
 
@@ -57,15 +48,23 @@ fn show_animation_mode(
     let mut prev_widths: Vec<usize> = Vec::new();
     // Spark particle system (Fire)
     #[derive(Clone, Copy)]
-    struct Spark { x: usize, y: usize, life: f32, age: f32, peak: f32, hue_jitter: f32 }
+    struct Spark {
+        x: usize,
+        y: usize,
+        life: f32,
+        age: f32,
+        peak: f32,
+        hue_jitter: f32,
+    }
     let mut sparks: Vec<Spark> = Vec::new();
     let mut last_frame_time: f32 = 0.0;
     let target_fps = color_fps.clamp(5.0, 240.0); // reuse color_fps as desired smoothness
     let frame_interval = 1.0 / target_fps;
-    // Meteor rain state
-    let mut meteors: Vec<Meteor> = Vec::new();
     // Glitch state
-    struct GlitchBurst { start: f32, dur: f32 }
+    struct GlitchBurst {
+        start: f32,
+        dur: f32,
+    }
     let mut glitch_bursts: Vec<GlitchBurst> = Vec::new();
     let mut last_glitch_check: f32 = 0.0;
     // --- Fall style simulation state ---
@@ -81,14 +80,21 @@ fn show_animation_mode(
         release: f32, // time offset when it starts to fall
     }
     #[derive(Clone, Copy)]
-    struct SettledUnit { ch: char, tilt: f32 }
+    struct SettledUnit {
+        ch: char,
+        tilt: f32,
+    }
     #[derive(PartialEq)]
-    enum FallPhase { Static, Falling, Settled }
+    enum FallPhase {
+        Static,
+        Falling,
+        Settled,
+    }
     let mut fall_letters: Vec<FallingLetter> = Vec::new(); // active & not yet settled
     let mut fall_pile: Vec<Vec<SettledUnit>> = Vec::new(); // per column bottom-up (settled chars with tilt)
     let mut fall_phase = FallPhase::Static;
     let mut fall_phase_start: f32 = 0.0; // elapsed when entered current phase
-    let mut last_dims: (u16,u16) = (0,0);
+    let mut last_dims: (u16, u16) = (0, 0);
     print!("\x1b[?25l\x1b[H");
     stdout().flush()?;
     loop {
@@ -118,16 +124,24 @@ fn show_animation_mode(
         if style == AnimationStyle::Fall {
             let term_h = th as usize;
             let term_w = tw as usize;
-            if fall_pile.is_empty() { fall_pile = vec![Vec::new(); term_w]; }
+            if fall_pile.is_empty() {
+                fall_pile = vec![Vec::new(); term_w];
+            }
             // Initialize letters (once) from parsed grid when entering Static
             if fall_phase == FallPhase::Static && fall_letters.is_empty() {
                 let total_rows = parsed.len().min(term_h);
                 for (row_i, row) in parsed.iter().enumerate().take(term_h) {
                     let mut col_i = 0usize;
                     for (ansi, ch) in row {
-                        if !ansi.is_empty() { continue; }
-                        if *ch == '\0' { continue; }
-                        if col_i >= term_w { break; }
+                        if !ansi.is_empty() {
+                            continue;
+                        }
+                        if *ch == '\0' {
+                            continue;
+                        }
+                        if col_i >= term_w {
+                            break;
+                        }
                         // Release spread (bottom-first): lower rows (larger row_i) start earlier
                         // so row at bottom gets the smallest delay.
                         let inv = (total_rows.saturating_sub(1)).saturating_sub(row_i) as f32; // top has largest inv
@@ -153,7 +167,10 @@ fn show_animation_mode(
             }
             // Phase transition trigger: start releasing when first release time reached
             if fall_phase == FallPhase::Static {
-                if fall_letters.iter().any(|fl| elapsed >= fall_phase_start + fl.release) {
+                if fall_letters
+                    .iter()
+                    .any(|fl| elapsed >= fall_phase_start + fl.release)
+                {
                     fall_phase = FallPhase::Falling;
                 }
             }
@@ -161,13 +178,21 @@ fn show_animation_mode(
             if fall_phase == FallPhase::Falling {
                 // Update only released letters
                 for fl in fall_letters.iter_mut() {
-                    if elapsed < fall_phase_start + fl.release { continue; }
+                    if elapsed < fall_phase_start + fl.release {
+                        continue;
+                    }
                     // horizontal drift with mild random perturbation & friction
                     fl.vx += (fastrand::f32() - 0.5) * 0.6 * dt_since; // small random accel
                     fl.vx *= 0.985_f32.powf(dt_since * 60.0); // friction
                     fl.xf += fl.vx * dt_since;
-                    if fl.xf < 0.0 { fl.xf = 0.0; fl.vx = -fl.vx * 0.3; }
-                    if fl.xf > (term_w as f32 - 1.0) { fl.xf = term_w as f32 - 1.0; fl.vx = -fl.vx * 0.3; }
+                    if fl.xf < 0.0 {
+                        fl.xf = 0.0;
+                        fl.vx = -fl.vx * 0.3;
+                    }
+                    if fl.xf > (term_w as f32 - 1.0) {
+                        fl.xf = term_w as f32 - 1.0;
+                        fl.vx = -fl.vx * 0.3;
+                    }
                     fl.vy += gravity * dt_since;
                     fl.y += fl.vy * dt_since;
                     let col_index = fl.xf.round().clamp(0.0, term_w as f32 - 1.0) as usize;
@@ -187,10 +212,20 @@ fn show_animation_mode(
                             // Assign tilt influenced by "center of mass" style: lean toward larger drop-off.
                             // We evaluate prospective height after adding this unit (col_height + 1) vs neighbors.
                             let prospective_height = col_height + 1;
-                            let lh = if col_index>0 { fall_pile[col_index-1].len() } else { prospective_height };
-                            let rh = if col_index+1 < fall_pile.len() { fall_pile[col_index+1].len() } else { prospective_height };
-                            let diff_left = (prospective_height as isize - lh as isize).max(0) as f32; // how much higher this column is vs left
-                            let diff_right = (prospective_height as isize - rh as isize).max(0) as f32; // vs right
+                            let lh = if col_index > 0 {
+                                fall_pile[col_index - 1].len()
+                            } else {
+                                prospective_height
+                            };
+                            let rh = if col_index + 1 < fall_pile.len() {
+                                fall_pile[col_index + 1].len()
+                            } else {
+                                prospective_height
+                            };
+                            let diff_left =
+                                (prospective_height as isize - lh as isize).max(0) as f32; // how much higher this column is vs left
+                            let diff_right =
+                                (prospective_height as isize - rh as isize).max(0) as f32; // vs right
                             // Determine direction with larger unsupported side (bigger positive diff)
                             let mut tilt_dir: f32 = 0.0;
                             let mut tilt_mag: f32 = 0.0;
@@ -201,21 +236,32 @@ fn show_animation_mode(
                                         tilt_dir = if fastrand::f32() < 0.5 { -1.0 } else { 1.0 };
                                         tilt_mag = diff_left.max(diff_right);
                                     }
-                                } else if diff_left > diff_right { // lean toward lower left side
-                                    tilt_dir = -1.0; tilt_mag = diff_left;
-                                } else { tilt_dir = 1.0; tilt_mag = diff_right; }
+                                } else if diff_left > diff_right {
+                                    // lean toward lower left side
+                                    tilt_dir = -1.0;
+                                    tilt_mag = diff_left;
+                                } else {
+                                    tilt_dir = 1.0;
+                                    tilt_mag = diff_right;
+                                }
                             }
-                            if fastrand::f32() < 0.25 { tilt_dir = 0.0; tilt_mag = 0.0; } // some remain vertical
+                            if fastrand::f32() < 0.25 {
+                                tilt_dir = 0.0;
+                                tilt_mag = 0.0;
+                            } // some remain vertical
                             // Scale magnitude into a reasonable range (~0.3..1.4)
                             if tilt_mag > 0.0 {
                                 // Non-linear compression to avoid huge values dominating
                                 tilt_mag = (tilt_mag / 2.5).min(1.4);
                                 // Add slight randomness (±15%)
-                                tilt_mag *= 0.85 + fastrand::f32()*0.3;
+                                tilt_mag *= 0.85 + fastrand::f32() * 0.3;
                             }
                             let tilt_val = tilt_dir * tilt_mag;
                             // Jitter parameters: phase random, amplitude proportional to |tilt| (so vertical ones barely move)
-                            fall_pile[col_index].push(SettledUnit { ch: fl.ch, tilt: tilt_val });
+                            fall_pile[col_index].push(SettledUnit {
+                                ch: fl.ch,
+                                tilt: tilt_val,
+                            });
                             // mark as to-remove by setting release far future
                             fl.release = f32::INFINITY;
                         }
@@ -223,7 +269,10 @@ fn show_animation_mode(
                 }
                 // Remove settled letters
                 fall_letters.retain(|fl| fl.release.is_finite());
-                if fall_letters.is_empty() { fall_phase = FallPhase::Settled; fall_phase_start = elapsed; }
+                if fall_letters.is_empty() {
+                    fall_phase = FallPhase::Settled;
+                    fall_phase_start = elapsed;
+                }
             } else if fall_phase == FallPhase::Settled {
                 if elapsed - fall_phase_start > 4.0 {
                     // restart cycle
@@ -240,23 +289,39 @@ fn show_animation_mode(
                 // For each column, place bottom-up enforcing support
                 for col in 0..term_w {
                     let stack = &fall_pile[col];
-                    if stack.is_empty() { continue; }
+                    if stack.is_empty() {
+                        continue;
+                    }
                     let h = stack.len();
-                    for level in 0..h { // level 0 = bottom
+                    for level in 0..h {
+                        // level 0 = bottom
                         let su = stack[level];
                         let row = bottom - level; // target row
-                        if row >= term_h { continue; }
+                        if row >= term_h {
+                            continue;
+                        }
                         let rel = level as f32 / h as f32; // 0 bottom -> 1 top
                         let max_shift = 1.3;
                         let raw_shift = su.tilt * rel * max_shift;
                         let mut step = raw_shift.abs().floor() * raw_shift.signum();
                         // Limit shift to 2 cells for stability
-                        if step > 2.0 { step = 2.0; } else if step < -2.0 { step = -2.0; }
-                        let mut target_col = (col as isize + step as isize).clamp(0, term_w as isize - 1);
+                        if step > 2.0 {
+                            step = 2.0;
+                        } else if step < -2.0 {
+                            step = -2.0;
+                        }
+                        let mut target_col =
+                            (col as isize + step as isize).clamp(0, term_w as isize - 1);
                         // Enforce support: if not bottom level ensure cell directly below is occupied; otherwise reduce shift magnitude toward 0
                         if level > 0 {
-                            while target_col != col as isize && settled_grid[row + 1][target_col as usize].is_none() {
-                                if target_col > col as isize { target_col -= 1; } else { target_col += 1; }
+                            while target_col != col as isize
+                                && settled_grid[row + 1][target_col as usize].is_none()
+                            {
+                                if target_col > col as isize {
+                                    target_col -= 1;
+                                } else {
+                                    target_col += 1;
+                                }
                             }
                         }
                         // Collision handling: if target already occupied at this row, fallback to original column if free
@@ -268,8 +333,13 @@ fn show_animation_mode(
                                 let mut found = false;
                                 for d in [1isize, -1] {
                                     let cand = target_col + d;
-                                    if cand >= 0 && cand < term_w as isize && settled_grid[row][cand as usize].is_none() {
-                                        target_col = cand; found = true; break;
+                                    if cand >= 0
+                                        && cand < term_w as isize
+                                        && settled_grid[row][cand as usize].is_none()
+                                    {
+                                        target_col = cand;
+                                        found = true;
+                                        break;
                                     }
                                 }
                                 if !found { /* leave overlap (will be overwritten) */ }
@@ -287,41 +357,82 @@ fn show_animation_mode(
                 // Build occupancy map for current frame
                 let mut active_map: Vec<Option<char>> = vec![None; term_w];
                 for fl in fall_letters.iter() {
-                    if fall_phase == FallPhase::Static && elapsed < fall_phase_start + fl.release { continue; }
+                    if fall_phase == FallPhase::Static && elapsed < fall_phase_start + fl.release {
+                        continue;
+                    }
                     let ry = fl.y.round() as isize;
-                    let cx = fl.xf.round().clamp(0.0,term_w as f32-1.0) as usize;
-                    if ry == row as isize { active_map[cx] = Some(fl.ch); }
+                    let cx = fl.xf.round().clamp(0.0, term_w as f32 - 1.0) as usize;
+                    if ry == row as isize {
+                        active_map[cx] = Some(fl.ch);
+                    }
                 }
                 // Use precomputed settled grid for this row
                 let pile_row: &Vec<Option<char>> = &settled_grid[row];
                 for col in 0..term_w {
                     let mut printed_char: char = pile_row[col].unwrap_or(' ');
-                    let mut r=0u8; let mut g=0u8; let mut b=0u8;
-                    if printed_char != ' ' { r=200; g=200; b=200; }
+                    let mut r = 0u8;
+                    let mut g = 0u8;
+                    let mut b = 0u8;
+                    if printed_char != ' ' {
+                        r = 200;
+                        g = 200;
+                        b = 200;
+                    }
                     if fall_phase == FallPhase::Static {
                         if printed_char == ' ' {
-                            if let Some(fl) = fall_letters.iter().find(|fl| fl.orig_row==row && fl.orig_col==col) {
-                                if elapsed < fall_phase_start + fl.release { printed_char=fl.ch; r=200; g=200; b=200; }
+                            if let Some(fl) = fall_letters
+                                .iter()
+                                .find(|fl| fl.orig_row == row && fl.orig_col == col)
+                            {
+                                if elapsed < fall_phase_start + fl.release {
+                                    printed_char = fl.ch;
+                                    r = 200;
+                                    g = 200;
+                                    b = 200;
+                                }
                             }
                         }
                     } else if fall_phase == FallPhase::Falling {
                         if printed_char == ' ' {
-                            if let Some(fl)= fall_letters.iter().find(|fl| fl.orig_row==row && fl.orig_col==col && elapsed < fall_phase_start + fl.release) {
-                                printed_char=fl.ch; r=120; g=120; b=120;
+                            if let Some(fl) = fall_letters.iter().find(|fl| {
+                                fl.orig_row == row
+                                    && fl.orig_col == col
+                                    && elapsed < fall_phase_start + fl.release
+                            }) {
+                                printed_char = fl.ch;
+                                r = 120;
+                                g = 120;
+                                b = 120;
                             }
                         }
                     }
-                    if let Some(ch) = &active_map[col] { printed_char=*ch; r=220; g=220; b=220; }
-                    if printed_char == ' ' { frame_buf.push(' ');} else { frame_buf.push_str(&format!("\x1b[38;2;{};{};{}m{}", r,g,b, printed_char)); }
+                    if let Some(ch) = &active_map[col] {
+                        printed_char = *ch;
+                        r = 220;
+                        g = 220;
+                        b = 220;
+                    }
+                    if printed_char == ' ' {
+                        frame_buf.push(' ');
+                    } else {
+                        frame_buf
+                            .push_str(&format!("\x1b[38;2;{};{};{}m{}", r, g, b, printed_char));
+                    }
                 }
                 frame_buf.push_str("\x1b[0m");
                 new_widths.push(term_w);
             }
-            let mut out = stdout(); out.write_all(frame_buf.as_bytes())?; out.flush()?; prev_widths = new_widths; continue;
+            let mut out = stdout();
+            out.write_all(frame_buf.as_bytes())?;
+            out.flush()?;
+            prev_widths = new_widths;
+            continue;
         }
-    if style == AnimationStyle::Fire {
+        if style == AnimationStyle::Fire {
             // Update ages
-            for sp in sparks.iter_mut() { sp.age += dt_since; }
+            for sp in sparks.iter_mut() {
+                sp.age += dt_since;
+            }
             // Remove finished
             sparks.retain(|s| s.age < s.life);
             if style == AnimationStyle::Fire {
@@ -337,34 +448,61 @@ fn show_animation_mode(
                         let life = 0.18 + fastrand::f32() * 0.55; // short pop
                         let peak = 0.25 + fastrand::f32() * 0.45; // peak time fraction
                         let hue_jitter = fastrand::f32() * 80.0;
-                        sparks.push(Spark { x: sx, y: by, life, age: 0.0, peak, hue_jitter });
+                        sparks.push(Spark {
+                            x: sx,
+                            y: by,
+                            life,
+                            age: 0.0,
+                            peak,
+                            hue_jitter,
+                        });
                     }
                 }
             }
         }
         // Typing style: progressively reveal characters line by line, then pause, then reset.
-    if style == AnimationStyle::Typing {
+        if style == AnimationStyle::Typing {
             let reveal_speed = 120.0 * speed.max(0.05); // chars per second (faster)
-            let total_chars: usize = parsed.iter().map(|r| r.iter().filter(|(a,ch)| a.is_empty() && *ch != '\0').count()).sum();
+            let total_chars: usize = parsed
+                .iter()
+                .map(|r| {
+                    r.iter()
+                        .filter(|(a, ch)| a.is_empty() && *ch != '\0')
+                        .count()
+                })
+                .sum();
             let reveal_time = (total_chars as f32 / reveal_speed).max(0.0001);
-            let mut chars_to_show = if elapsed < reveal_time { (elapsed * reveal_speed) as usize } else { total_chars };
-            if chars_to_show > total_chars { chars_to_show = total_chars; }
+            let mut chars_to_show = if elapsed < reveal_time {
+                (elapsed * reveal_speed) as usize
+            } else {
+                total_chars
+            };
+            if chars_to_show > total_chars {
+                chars_to_show = total_chars;
+            }
             let show_all = chars_to_show == total_chars;
             let mut shown_so_far = 0usize;
             for (li, row) in parsed.iter().take(max_lines).enumerate() {
                 frame_buf.push_str(&format!("\x1b[{};1H", li + 1));
                 let mut printed = 0usize;
                 for (ansi, ch) in row {
-                    if !ansi.is_empty() { continue; }
-                    if *ch == '\0' { continue; }
-                    if printed >= tw as usize { break; }
+                    if !ansi.is_empty() {
+                        continue;
+                    }
+                    if *ch == '\0' {
+                        continue;
+                    }
+                    if printed >= tw as usize {
+                        break;
+                    }
                     let visible = shown_so_far < chars_to_show;
                     shown_so_far += 1;
                     if visible || show_all {
                         // simple subtle hue drift for revealed chars
-                        let hue = (elapsed * 35.0 + (printed as f32)*1.5 + (li as f32)*4.0) % 360.0;
-                        let (r,g,b) = animation::styles::hsv_to_rgb(hue, 0.25, 0.92);
-                        frame_buf.push_str(&format!("\x1b[38;2;{};{};{}m{}", r,g,b,ch));
+                        let hue =
+                            (elapsed * 35.0 + (printed as f32) * 1.5 + (li as f32) * 4.0) % 360.0;
+                        let (r, g, b) = animation::styles::hsv_to_rgb(hue, 0.25, 0.92);
+                        frame_buf.push_str(&format!("\x1b[38;2;{};{};{}m{}", r, g, b, ch));
                     } else {
                         frame_buf.push(' ');
                     }
@@ -374,7 +512,10 @@ fn show_animation_mode(
                 new_widths.push(printed);
             }
             let mut out = stdout();
-            out.write_all(frame_buf.as_bytes())?; out.flush()?; prev_widths = new_widths; continue;
+            out.write_all(frame_buf.as_bytes())?;
+            out.flush()?;
+            prev_widths = new_widths;
+            continue;
         }
         // Glitch style: create intermittent short bursts that shift some columns and distort colors briefly.
         if style == AnimationStyle::Glitch {
@@ -383,7 +524,10 @@ fn show_animation_mode(
                 last_glitch_check = elapsed;
                 if glitch_bursts.len() < 3 && fastrand::f32() < 0.25 {
                     let dur = 0.12 + fastrand::f32() * 0.25; // 0.12..0.37s
-                    glitch_bursts.push(GlitchBurst { start: elapsed, dur });
+                    glitch_bursts.push(GlitchBurst {
+                        start: elapsed,
+                        dur,
+                    });
                 }
                 // prune
                 glitch_bursts.retain(|gb| elapsed < gb.start + gb.dur);
@@ -391,13 +535,19 @@ fn show_animation_mode(
             let mut out_cols_shift: Vec<i32> = Vec::new();
             // derive aggregate distortion pattern
             for gb in glitch_bursts.iter() {
-                let phase = ((elapsed - gb.start) / gb.dur).clamp(0.0,1.0);
-                let energy = if phase < 0.5 { (phase/0.5).powf(0.6) } else { (1.0 - (phase-0.5)/0.5).powf(1.4) };
+                let phase = ((elapsed - gb.start) / gb.dur).clamp(0.0, 1.0);
+                let energy = if phase < 0.5 {
+                    (phase / 0.5).powf(0.6)
+                } else {
+                    (1.0 - (phase - 0.5) / 0.5).powf(1.4)
+                };
                 let shifts = (energy * 6.0).ceil() as usize; // number of columns affected
                 for _ in 0..shifts {
                     let col = fastrand::usize(..(size()?.0 as usize).max(1));
                     let dir = if fastrand::bool() { 1 } else { -1 };
-                    if out_cols_shift.len() < col+1 { out_cols_shift.resize(col+1, 0); }
+                    if out_cols_shift.len() < col + 1 {
+                        out_cols_shift.resize(col + 1, 0);
+                    }
                     out_cols_shift[col] += dir * (1 + fastrand::i32(0..2));
                 }
             }
@@ -406,28 +556,53 @@ fn show_animation_mode(
                 frame_buf.push_str(&format!("\x1b[{};1H", li + 1));
                 let mut printed = 0usize;
                 for (ansi, ch) in row {
-                    if !ansi.is_empty() { continue; }
-                    if *ch == '\0' { continue; }
-                    if printed >= tw as usize { break; }
+                    if !ansi.is_empty() {
+                        continue;
+                    }
+                    if *ch == '\0' {
+                        continue;
+                    }
+                    if printed >= tw as usize {
+                        break;
+                    }
                     // compute target column after shift
-                    let shift = if printed < out_cols_shift.len() { out_cols_shift[printed] } else { 0 };
-                    let dest_col = (printed as i32 + shift).clamp(0, twu as i32 -1) as usize;
+                    let shift = if printed < out_cols_shift.len() {
+                        out_cols_shift[printed]
+                    } else {
+                        0
+                    };
+                    let dest_col = (printed as i32 + shift).clamp(0, twu as i32 - 1) as usize;
                     // color: base neon-like with harsher sat + random channel glitch
-                    let base_hue = (elapsed * 120.0 + (printed as f32)*3.0) % 360.0;
+                    let base_hue = (elapsed * 120.0 + (printed as f32) * 3.0) % 360.0;
                     let (mut r, mut g, mut b) = animation::styles::hsv_to_rgb(base_hue, 0.9, 0.85);
                     // channel swapping / spike
-                    if fastrand::f32() < 0.08 { std::mem::swap(&mut r, &mut g); }
-                    if fastrand::f32() < 0.06 { b = b.saturating_add(70).min(255); }
+                    if fastrand::f32() < 0.08 {
+                        std::mem::swap(&mut r, &mut g);
+                    }
+                    if fastrand::f32() < 0.06 {
+                        b = b.saturating_add(70).min(255);
+                    }
                     // write spaces until dest_col
-                    while printed < dest_col { frame_buf.push(' '); printed += 1; }
-                    frame_buf.push_str(&format!("\x1b[38;2;{};{};{}m{}", r,g,b,ch));
+                    while printed < dest_col {
+                        frame_buf.push(' ');
+                        printed += 1;
+                    }
+                    frame_buf.push_str(&format!("\x1b[38;2;{};{};{}m{}", r, g, b, ch));
                     printed += 1;
                 }
                 frame_buf.push_str("\x1b[0m");
-                if let Some(pw) = prev_widths.get(li) { if *pw > printed { frame_buf.push_str(&" ".repeat(pw - printed)); } }
+                if let Some(pw) = prev_widths.get(li) {
+                    if *pw > printed {
+                        frame_buf.push_str(&" ".repeat(pw - printed));
+                    }
+                }
                 new_widths.push(printed);
             }
-            let mut out = stdout(); out.write_all(frame_buf.as_bytes())?; out.flush()?; prev_widths = new_widths; continue;
+            let mut out = stdout();
+            out.write_all(frame_buf.as_bytes())?;
+            out.flush()?;
+            prev_widths = new_widths;
+            continue;
         }
         for (li, row) in parsed.iter().take(max_lines).enumerate() {
             frame_buf.push_str(&format!("\x1b[{};1H", li + 1));
@@ -448,22 +623,19 @@ fn show_animation_mode(
                     calculate_matrix_color_at(elapsed, li, printed, th as usize)
                 } else if style == AnimationStyle::Fire {
                     calculate_fire_color_at(elapsed, li, printed, th as usize, tw as usize)
-                } else if style == AnimationStyle::Marquee {
-                    calculate_marquee_color_at(elapsed, li, printed, tw as usize, speed)
                 } else if style == AnimationStyle::Plasma {
                     calculate_plasma_color_at(elapsed, li, printed, tw as usize, th as usize, speed)
                 } else if style == AnimationStyle::Aurora {
                     calculate_aurora_color_at(elapsed, li, printed, tw as usize, th as usize, speed)
                 } else if style == AnimationStyle::PulseRings {
-                    calculate_pulse_rings_color_at(elapsed, li, printed, tw as usize, th as usize, speed)
-                } else if style == AnimationStyle::MeteorRain {
-                    // Update meteor field once per row start? We update once per frame before rows.
-                    // (Handled below outside the row loop) Here we just sample.
-                    match sample_meteor_color(elapsed, li, printed, &meteors) { Some(c)=>c, None=>{
-                        let ci = line_offset + char_idx / spread;
-                        let stable_id = li * tw as usize + printed;
-                        calculate_color(&AnimationStyle::Glow, freq, ci, elapsed, stable_id) // subtle background
-                    }}
+                    calculate_pulse_rings_color_at(
+                        elapsed,
+                        li,
+                        printed,
+                        tw as usize,
+                        th as usize,
+                        speed,
+                    )
                 } else if style == AnimationStyle::Lava {
                     calculate_lava_color_at(elapsed, li, printed, tw as usize, th as usize, speed)
                 } else if style == AnimationStyle::EdgeGlow {
@@ -491,10 +663,19 @@ fn show_animation_mode(
                             // Asymmetric envelope: rise to peak then fall
                             let up = (t / sp.peak).clamp(0.0, 1.0);
                             let down = ((t - sp.peak) / (1.0 - sp.peak)).clamp(0.0, 1.0);
-                            let envelope = if t < sp.peak { up.powf(0.8) } else { (1.0 - down).powf(1.6) };
-                            let flicker = 0.85 + (elapsed * 60.0 + (sp.x as f32 * 1.3)).sin() * 0.15;
+                            let envelope = if t < sp.peak {
+                                up.powf(0.8)
+                            } else {
+                                (1.0 - down).powf(1.6)
+                            };
+                            let flicker =
+                                0.85 + (elapsed * 60.0 + (sp.x as f32 * 1.3)).sin() * 0.15;
                             let w = (envelope * flicker).clamp(0.0, 1.0);
-                            let (hot_r, hot_g, hot_b) = (255.0, 160.0 + sp.hue_jitter.min(70.0), (sp.hue_jitter * 0.9).min(120.0));
+                            let (hot_r, hot_g, hot_b) = (
+                                255.0,
+                                160.0 + sp.hue_jitter.min(70.0),
+                                (sp.hue_jitter * 0.9).min(120.0),
+                            );
                             r = (r as f32 * (1.0 - w) + hot_r * w) as u8;
                             g = (g as f32 * (1.0 - w) + hot_g * w).min(255.0) as u8;
                             b = (b as f32 * (1.0 - w) + hot_b * w) as u8;
@@ -512,13 +693,17 @@ fn show_animation_mode(
                     if printed > 0 {
                         left_blank = true; // assume blank; refining would need a buffer of previous chars
                     }
-                    if printed + 1 < tw as usize { right_blank = true; }
+                    if printed + 1 < tw as usize {
+                        right_blank = true;
+                    }
                     let edge_factor = if left_blank || right_blank { 1.25 } else { 1.0 };
                     if edge_factor > 1.0 {
                         let nr = (r as f32 * edge_factor).min(255.0) as u8;
                         let ng = (g as f32 * edge_factor).min(255.0) as u8;
                         let nb = (b as f32 * edge_factor).min(255.0) as u8;
-                        r = nr; g = ng; b = nb;
+                        r = nr;
+                        g = ng;
+                        b = nb;
                     }
                 }
                 frame_buf.push_str(&format!("\x1b[38;2;{};{};{}m{}", r, g, b, ch));
@@ -534,11 +719,6 @@ fn show_animation_mode(
             new_widths.push(printed);
             line_offset += char_idx / spread;
         }
-        // Meteor update (once per frame, after using previous state for this frame's sample) so trail stable across frame
-        if style == AnimationStyle::MeteorRain {
-            update_meteors(&mut meteors, dt_since, tw as usize, th as usize, speed);
-        }
-        // No dynamic line count changes now; skip clearing extra lines logic
         let mut out = stdout();
         out.write_all(frame_buf.as_bytes())?;
         out.flush()?;

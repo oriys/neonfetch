@@ -38,7 +38,9 @@ impl AnimationStyle {
             "aurora" | "au" | "northern" => AnimationStyle::Aurora,
             "glitch" | "gl" => AnimationStyle::Glitch,
             "pulse-rings" | "pulserings" | "rings" | "pr" => AnimationStyle::PulseRings,
-            "meteor-rain" | "meteorrain" | "meteor" | "meteors" | "mr" => AnimationStyle::MeteorRain,
+            "meteor-rain" | "meteorrain" | "meteor" | "meteors" | "mr" => {
+                AnimationStyle::MeteorRain
+            }
             "lava" | "lv" => AnimationStyle::Lava,
             "edge-glow" | "edgeglow" | "eg" => AnimationStyle::EdgeGlow,
             _ => AnimationStyle::Neon,
@@ -141,18 +143,17 @@ pub fn calculate_color(
             let sat = 0.55 + (breath - 0.8) * 0.3; // saturate slightly at peaks
             hsv_to_rgb(base_hue, sat.clamp(0.3, 0.95), v)
         }
-    AnimationStyle::Matrix => (0, 255, 0), // Actual color generated in matrix::calculate_matrix_color_at
-    AnimationStyle::Fire => (255, 80, 0),  // Actual color generated in fire::calculate_fire_color_at
-    AnimationStyle::Fall => (200, 200, 200), // Actual color generated in fall simulation renderer
-    AnimationStyle::Marquee => (160,160,160), // Actual color generated in marquee::calculate_marquee_color_at
-    AnimationStyle::Typing => (200,200,200), // Actual color decided in typing renderer
-    AnimationStyle::Plasma => (180,180,180), // Actual color generated in plasma module
-    AnimationStyle::Aurora => (160,190,255), // Actual color generated in aurora module
-    AnimationStyle::Glitch => (200,200,200), // Actual color generated in glitch renderer
-    AnimationStyle::PulseRings => (200,200,200), // Actual color generated in pulse-rings module
-    AnimationStyle::MeteorRain => (180,180,180), // Actual color generated in meteor-rain renderer
-    AnimationStyle::Lava => (255,80,20), // Actual color generated in lava module
-    AnimationStyle::EdgeGlow => (200,200,200), // Actual color adjusted in renderer edge pass
+        AnimationStyle::Matrix => (0, 255, 0), // Actual color generated in matrix::calculate_matrix_color_at
+        AnimationStyle::Fire => (255, 80, 0), // Actual color generated in fire::calculate_fire_color_at
+        AnimationStyle::Fall => (200, 200, 200), // Actual color generated in fall simulation renderer
+        AnimationStyle::Marquee => (160, 160, 160), // Actual color generated in marquee::calculate_marquee_color_at
+        AnimationStyle::Typing => (200, 200, 200),  // Actual color decided in typing renderer
+        AnimationStyle::Plasma => (180, 180, 180),  // Actual color generated in plasma module
+        AnimationStyle::Aurora => (160, 190, 255),  // Actual color generated in aurora module
+        AnimationStyle::Glitch => (200, 200, 200),  // Actual color generated in glitch renderer
+        AnimationStyle::PulseRings => (200, 200, 200), // Actual color generated in pulse-rings module
+        AnimationStyle::MeteorRain => (180, 180, 180), // Actual color generated in meteor-rain renderer
+        AnimationStyle::Lava => (255, 80, 20),         // Actual color generated in lava module
+        AnimationStyle::EdgeGlow => (200, 200, 200), // Actual color adjusted in renderer edge pass
     }
 }
-
