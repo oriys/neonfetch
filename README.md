@@ -18,6 +18,22 @@ multiple visual styles.
 
 ### From Source
 
+Install directly from the latest commit (Git HEAD) without cloning:
+
+```bash
+cargo install --locked --git https://github.com/oriys/neonfetch neonfetch
+```
+
+Or clone and then install the binary into your Cargo bin directory (adds stripping & reuse of dependencies):
+
+```bash
+git clone https://github.com/oriys/neonfetch
+cd neonfetch
+cargo install --path . --locked
+```
+
+Just building locally (binary stays in target/):
+
 ```bash
 git clone https://github.com/oriys/neonfetch
 cd neonfetch
@@ -72,7 +88,7 @@ neonfetch --style plasma
 #### Available Styles
 
 | Style         | Alias            | Description                   |
-|---------------|------------------|-------------------------------|
+| ------------- | ---------------- | ----------------------------- |
 | `neon`        | `n`              | Glowing neon effect (default) |
 | `wave`        | `w`              | Color wave animation          |
 | `pulse`       | `p`              | Pulsing color effect          |
@@ -225,4 +241,4 @@ This project is licensed under the MIT License. See the LICENSE file for details
 
 ---
 
-*Neonfetch - Making system information beautiful, one animation at a time.* ✨
+_Neonfetch - Making system information beautiful, one animation at a time._ ✨
