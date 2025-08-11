@@ -9,6 +9,7 @@ pub enum AnimationStyle {
     Fire,
     Fall,
     Marquee,
+    RainbowOutline,
 }
 
 impl AnimationStyle {
@@ -23,6 +24,7 @@ impl AnimationStyle {
             "fire" | "f" => AnimationStyle::Fire,
             "fall" | "stack" | "s" => AnimationStyle::Fall,
             "marquee" | "mq" => AnimationStyle::Marquee,
+            "rainbow-outline" | "outline" | "ro" => AnimationStyle::RainbowOutline,
             _ => AnimationStyle::Neon,
         }
     }
@@ -116,5 +118,6 @@ pub fn calculate_color(
     AnimationStyle::Fire => (255, 80, 0),  // Actual color generated in fire::calculate_fire_color_at
     AnimationStyle::Fall => (200, 200, 200), // Actual color generated in fall simulation renderer
     AnimationStyle::Marquee => (160,160,160), // Actual color generated in marquee::calculate_marquee_color_at
+    AnimationStyle::RainbowOutline => (180,180,180), // Actual color generated in rainbow_outline
     }
 }

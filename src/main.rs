@@ -3,7 +3,7 @@ mod system; // system information collection
 mod util; // shared utilities (e.g. ANSI parsing)
 
 use animation::{
-    AnimationStyle, calculate_color, calculate_fire_color_at, calculate_matrix_color_at, calculate_marquee_color_at,
+    AnimationStyle, calculate_color, calculate_fire_color_at, calculate_matrix_color_at, calculate_marquee_color_at, calculate_rainbow_outline_color_at,
 };
 use system::generate_system_info;
 
@@ -346,6 +346,34 @@ fn show_animation_mode(
                     calculate_fire_color_at(elapsed, li, printed, th as usize, tw as usize)
                 } else if style == AnimationStyle::Marquee {
                     calculate_marquee_color_at(elapsed, li, printed, tw as usize, speed)
+                } else if style == AnimationStyle::RainbowOutline {
+                    // Determine neighbor emptiness within original parsed data for outline detection.
+                    // We'll sample up/down/left/right characters ignoring ANSI sequences (already filtered here).
+                    let mut mask: u8 = 0;
+                    // Helper closure to test empty at (r,c)
+                    let term_w = tw as usize;
+                    // We approximate original columns by counting printable positions up to current.
+                    // For outline correctness we need adjacency in rendered grid: Use printed index.
+                    // Build a mini look function scanning parsed row for target column each time (cheap enough for edge cells).
+                    let is_empty = |row_idx: isize, col_idx: isize| -> bool {
+                        if row_idx < 0 || col_idx < 0 { return true; }
+                        let row_idx_usize = row_idx as usize;
+                        if row_idx_usize >= parsed.len() { return true; }
+                        let mut col_counter = 0isize;
+                        for (a2, ch2) in &parsed[row_idx_usize] {
+                            if !a2.is_empty() { continue; }
+                            if *ch2 == '\0' { continue; }
+                            if col_counter == col_idx { return *ch2 == ' '; }
+                            col_counter += 1;
+                            if col_counter > col_idx { break; }
+                        }
+                        true // treat missing as empty
+                    };
+                    if is_empty(li as isize -1, printed as isize) { mask |= 1; }
+                    if is_empty(li as isize +1, printed as isize) { mask |= 2; }
+                    if is_empty(li as isize, printed as isize -1) { mask |= 4; }
+                    if is_empty(li as isize, printed as isize +1) { mask |= 8; }
+                    calculate_rainbow_outline_color_at(elapsed, li, printed, mask)
                 } else {
                     let ci = line_offset + char_idx / spread;
                     // stable id per cell for smoother hue (avoid flicker from ever-growing global counter)
