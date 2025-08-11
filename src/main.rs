@@ -3,7 +3,7 @@ mod system; // system information collection
 mod util; // shared utilities (e.g. ANSI parsing)
 
 use animation::{
-    AnimationStyle, calculate_color, calculate_fire_color_at, calculate_matrix_color_at,
+    AnimationStyle, calculate_color, calculate_fire_color_at, calculate_matrix_color_at, calculate_marquee_color_at,
 };
 use system::generate_system_info;
 
@@ -344,6 +344,8 @@ fn show_animation_mode(
                     calculate_matrix_color_at(elapsed, li, printed, th as usize)
                 } else if style == AnimationStyle::Fire {
                     calculate_fire_color_at(elapsed, li, printed, th as usize, tw as usize)
+                } else if style == AnimationStyle::Marquee {
+                    calculate_marquee_color_at(elapsed, li, printed, tw as usize, speed)
                 } else {
                     let ci = line_offset + char_idx / spread;
                     // stable id per cell for smoother hue (avoid flicker from ever-growing global counter)
