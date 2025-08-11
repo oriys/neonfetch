@@ -17,6 +17,7 @@ pub enum AnimationStyle {
     PulseRings,
     MeteorRain,
     Lava,
+    EdgeGlow,
 }
 
 impl AnimationStyle {
@@ -39,6 +40,7 @@ impl AnimationStyle {
             "pulse-rings" | "pulserings" | "rings" | "pr" => AnimationStyle::PulseRings,
             "meteor-rain" | "meteorrain" | "meteor" | "meteors" | "mr" => AnimationStyle::MeteorRain,
             "lava" | "lv" => AnimationStyle::Lava,
+            "edge-glow" | "edgeglow" | "eg" => AnimationStyle::EdgeGlow,
             _ => AnimationStyle::Neon,
         }
     }
@@ -150,6 +152,7 @@ pub fn calculate_color(
     AnimationStyle::PulseRings => (200,200,200), // Actual color generated in pulse-rings module
     AnimationStyle::MeteorRain => (180,180,180), // Actual color generated in meteor-rain renderer
     AnimationStyle::Lava => (255,80,20), // Actual color generated in lava module
+    AnimationStyle::EdgeGlow => (200,200,200), // Actual color adjusted in renderer edge pass
     }
 }
 

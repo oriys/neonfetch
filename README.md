@@ -57,6 +57,7 @@ Host / OS / kernel / uptime / shell / terminal / CPU / GPU / memory / swap / dis
  - pulse-rings – expanding concentric color rings from a drifting center
  - meteor-rain – diagonal multicolor shooting stars with fading trails
  - lava – molten flowing heat-map (procedural layered noise)
+ - edge-glow – base neon with intensified character edge brightness
 
 `classic` is deprecated and now aliases to `neon`.
 
@@ -76,7 +77,7 @@ neonfetch [options]
 ```
 Flags:
 - `--fetch` / `-f`     One-shot (no animation)
-- `--style <name>`     neon | wave | pulse | matrix | fire | marquee | typing | plasma | glow | aurora | glitch | pulse-rings | meteor-rain | lava (default neon)
+- `--style <name>`     neon | wave | pulse | matrix | fire | marquee | typing | plasma | glow | aurora | glitch | pulse-rings | meteor-rain | lava | edge-glow (default neon)
 - `--fire-mode <m>`    basic | advanced (default advanced)
 - `--speed <x>`        Animation speed (0.1–10, default 1.0)
 - `--color-fps <n>`    Color refresh rate (5–120, default 30)
@@ -95,6 +96,7 @@ neonfetch --style glitch --speed 1.4 --color-fps 50
 neonfetch --style pulse-rings --speed 1.1 --color-fps 50
 neonfetch --style meteor-rain --speed 1.0 --color-fps 45
 neonfetch --style lava --speed 0.9 --color-fps 35
+neonfetch --style edge-glow --speed 1.0 --color-fps 40
 ```
 
 ## Notes

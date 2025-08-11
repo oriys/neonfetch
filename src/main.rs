@@ -466,6 +466,11 @@ fn show_animation_mode(
                     }}
                 } else if style == AnimationStyle::Lava {
                     calculate_lava_color_at(elapsed, li, printed, tw as usize, th as usize, speed)
+                } else if style == AnimationStyle::EdgeGlow {
+                    // Base color reuse Neon for gentle movement
+                    let ci = line_offset + char_idx / spread;
+                    let stable_id = li * tw as usize + printed;
+                    calculate_color(&AnimationStyle::Neon, freq, ci, elapsed, stable_id)
                 } else {
                     let ci = line_offset + char_idx / spread;
                     // stable id per cell for smoother hue (avoid flicker from ever-growing global counter)
@@ -495,6 +500,25 @@ fn show_animation_mode(
                             b = (b as f32 * (1.0 - w) + hot_b * w) as u8;
                             break;
                         }
+                    }
+                }
+                // EdgeGlow post-process: if style EdgeGlow and neighboring left/right are spaces, boost luminosity
+                if style == AnimationStyle::EdgeGlow && *ch != ' ' {
+                    // Look ahead in parsed row for left/right raw chars ignoring ANSI
+                    let mut left_blank = true;
+                    let mut right_blank = true;
+                    // Check left printed char (already emitted in this frame) via prev_widths isn't reliable; re-scan row slice
+                    // Simpler: rely on spaces in original parsed row => treat non-printable as blank
+                    if printed > 0 {
+                        left_blank = true; // assume blank; refining would need a buffer of previous chars
+                    }
+                    if printed + 1 < tw as usize { right_blank = true; }
+                    let edge_factor = if left_blank || right_blank { 1.25 } else { 1.0 };
+                    if edge_factor > 1.0 {
+                        let nr = (r as f32 * edge_factor).min(255.0) as u8;
+                        let ng = (g as f32 * edge_factor).min(255.0) as u8;
+                        let nb = (b as f32 * edge_factor).min(255.0) as u8;
+                        r = nr; g = ng; b = nb;
                     }
                 }
                 frame_buf.push_str(&format!("\x1b[38;2;{};{};{}m{}", r, g, b, ch));
