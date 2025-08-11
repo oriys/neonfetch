@@ -11,6 +11,7 @@ pub enum AnimationStyle {
     Marquee,
     Typing,
     Plasma,
+    Embers,
 }
 
 impl AnimationStyle {
@@ -27,6 +28,7 @@ impl AnimationStyle {
             "marquee" | "mq" => AnimationStyle::Marquee,
             "typing" | "type" | "t" => AnimationStyle::Typing,
             "plasma" | "ps" => AnimationStyle::Plasma,
+            "embers" | "ember" | "em" => AnimationStyle::Embers,
             _ => AnimationStyle::Neon,
         }
     }
@@ -122,5 +124,6 @@ pub fn calculate_color(
     AnimationStyle::Marquee => (160,160,160), // Actual color generated in marquee::calculate_marquee_color_at
     AnimationStyle::Typing => (200,200,200), // Actual color decided in typing renderer
     AnimationStyle::Plasma => (180,180,180), // Actual color generated in plasma module
+    AnimationStyle::Embers => (120,80,40),   // Actual color combined with ember particles in main
     }
 }
