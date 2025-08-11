@@ -10,6 +10,7 @@ pub enum AnimationStyle {
     Fall,
     Marquee,
     Typing,
+    Plasma,
 }
 
 impl AnimationStyle {
@@ -25,6 +26,7 @@ impl AnimationStyle {
             "fall" | "stack" | "s" => AnimationStyle::Fall,
             "marquee" | "mq" => AnimationStyle::Marquee,
             "typing" | "type" | "t" => AnimationStyle::Typing,
+            "plasma" | "ps" => AnimationStyle::Plasma,
             _ => AnimationStyle::Neon,
         }
     }
@@ -119,5 +121,6 @@ pub fn calculate_color(
     AnimationStyle::Fall => (200, 200, 200), // Actual color generated in fall simulation renderer
     AnimationStyle::Marquee => (160,160,160), // Actual color generated in marquee::calculate_marquee_color_at
     AnimationStyle::Typing => (200,200,200), // Actual color decided in typing renderer
+    AnimationStyle::Plasma => (180,180,180), // Actual color generated in plasma module
     }
 }
