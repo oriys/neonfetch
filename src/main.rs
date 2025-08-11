@@ -3,7 +3,7 @@ mod system; // system information collection
 mod util; // shared utilities (e.g. ANSI parsing)
 
 use animation::{
-    AnimationStyle, calculate_color, calculate_fire_color_at, calculate_matrix_color_at, calculate_marquee_color_at, calculate_rainbow_outline_color_at,
+    AnimationStyle, calculate_color, calculate_fire_color_at, calculate_matrix_color_at, calculate_marquee_color_at,
 };
 use system::generate_system_info;
 
@@ -325,6 +325,43 @@ fn show_animation_mode(
                 }
             }
         }
+        // Typing style: progressively reveal characters line by line, then pause, then reset.
+        if style == AnimationStyle::Typing {
+            let reveal_speed = 60.0 * speed.max(0.05); // chars per second
+            let total_chars: usize = parsed.iter().map(|r| r.iter().filter(|(a,ch)| a.is_empty() && *ch != '\0').count()).sum();
+            let cycle_pause = 1.2; // seconds full text stay visible
+            let total_time = (total_chars as f32 / reveal_speed) + cycle_pause;
+            let t_mod = elapsed % total_time;
+            let mut chars_to_show = if t_mod < (total_chars as f32 / reveal_speed) {
+                (t_mod * reveal_speed) as usize
+            } else { total_chars };
+            let show_all = chars_to_show >= total_chars;
+            let mut shown_so_far = 0usize;
+            for (li, row) in parsed.iter().take(max_lines).enumerate() {
+                frame_buf.push_str(&format!("\x1b[{};1H", li + 1));
+                let mut printed = 0usize;
+                for (ansi, ch) in row {
+                    if !ansi.is_empty() { continue; }
+                    if *ch == '\0' { continue; }
+                    if printed >= tw as usize { break; }
+                    let visible = shown_so_far < chars_to_show;
+                    shown_so_far += 1;
+                    if visible || show_all {
+                        // simple subtle hue drift for revealed chars
+                        let hue = (elapsed * 35.0 + (printed as f32)*1.5 + (li as f32)*4.0) % 360.0;
+                        let (r,g,b) = animation::styles::hsv_to_rgb(hue, 0.25, 0.92);
+                        frame_buf.push_str(&format!("\x1b[38;2;{};{};{}m{}", r,g,b,ch));
+                    } else {
+                        frame_buf.push(' ');
+                    }
+                    printed += 1;
+                }
+                frame_buf.push_str("\x1b[0m");
+                new_widths.push(printed);
+            }
+            let mut out = stdout();
+            out.write_all(frame_buf.as_bytes())?; out.flush()?; prev_widths = new_widths; continue;
+        }
         for (li, row) in parsed.iter().take(max_lines).enumerate() {
             frame_buf.push_str(&format!("\x1b[{};1H", li + 1));
             let mut char_idx = 0f32;
@@ -346,34 +383,6 @@ fn show_animation_mode(
                     calculate_fire_color_at(elapsed, li, printed, th as usize, tw as usize)
                 } else if style == AnimationStyle::Marquee {
                     calculate_marquee_color_at(elapsed, li, printed, tw as usize, speed)
-                } else if style == AnimationStyle::RainbowOutline {
-                    // Determine neighbor emptiness within original parsed data for outline detection.
-                    // We'll sample up/down/left/right characters ignoring ANSI sequences (already filtered here).
-                    let mut mask: u8 = 0;
-                    // Helper closure to test empty at (r,c)
-                    let term_w = tw as usize;
-                    // We approximate original columns by counting printable positions up to current.
-                    // For outline correctness we need adjacency in rendered grid: Use printed index.
-                    // Build a mini look function scanning parsed row for target column each time (cheap enough for edge cells).
-                    let is_empty = |row_idx: isize, col_idx: isize| -> bool {
-                        if row_idx < 0 || col_idx < 0 { return true; }
-                        let row_idx_usize = row_idx as usize;
-                        if row_idx_usize >= parsed.len() { return true; }
-                        let mut col_counter = 0isize;
-                        for (a2, ch2) in &parsed[row_idx_usize] {
-                            if !a2.is_empty() { continue; }
-                            if *ch2 == '\0' { continue; }
-                            if col_counter == col_idx { return *ch2 == ' '; }
-                            col_counter += 1;
-                            if col_counter > col_idx { break; }
-                        }
-                        true // treat missing as empty
-                    };
-                    if is_empty(li as isize -1, printed as isize) { mask |= 1; }
-                    if is_empty(li as isize +1, printed as isize) { mask |= 2; }
-                    if is_empty(li as isize, printed as isize -1) { mask |= 4; }
-                    if is_empty(li as isize, printed as isize +1) { mask |= 8; }
-                    calculate_rainbow_outline_color_at(elapsed, li, printed, mask)
                 } else {
                     let ci = line_offset + char_idx / spread;
                     // stable id per cell for smoother hue (avoid flicker from ever-growing global counter)
