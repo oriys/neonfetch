@@ -58,6 +58,9 @@ Host / OS / kernel / uptime / shell / terminal / CPU / GPU / memory / swap / dis
 - matrix – green code rain style (per‑cell variation)
 - fire – flame gradient (basic / advanced)
 - marquee – horizontal moving highlight band (terminal marquee)
+ - typing – progressive type-in reveal, then restart
+ - plasma – flowing multi-sine color field
+ - glow – soft global breathing glow with subtle per‑char shimmer
 
 `classic` is deprecated and now aliases to `neon`.
 
@@ -77,7 +80,7 @@ neonfetch [options]
 ```
 Flags:
 - `--fetch` / `-f`     One-shot (no animation)
-- `--style <name>`     neon | wave | pulse | matrix | fire | marquee (default neon)
+- `--style <name>`     neon | wave | pulse | matrix | fire | marquee | typing | plasma | glow (default neon)
 - `--fire-mode <m>`    basic | advanced (default advanced)
 - `--speed <x>`        Animation speed (0.1–10, default 1.0)
 - `--color-fps <n>`    Color refresh rate (5–120, default 30)
@@ -88,6 +91,9 @@ neonfetch --fetch
 neonfetch --style wave --speed 0.8
 neonfetch --style fire --fire-mode basic --color-fps 20
 neonfetch --style marquee --speed 1.5
+neonfetch --style typing
+neonfetch --style plasma --speed 0.7
+neonfetch --style glow --color-fps 45
 ```
 
 ## Notes

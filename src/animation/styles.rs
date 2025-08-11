@@ -11,7 +11,7 @@ pub enum AnimationStyle {
     Marquee,
     Typing,
     Plasma,
-    Embers,
+    Glow,
 }
 
 impl AnimationStyle {
@@ -28,7 +28,7 @@ impl AnimationStyle {
             "marquee" | "mq" => AnimationStyle::Marquee,
             "typing" | "type" | "t" => AnimationStyle::Typing,
             "plasma" | "ps" => AnimationStyle::Plasma,
-            "embers" | "ember" | "em" => AnimationStyle::Embers,
+            "glow" | "g" => AnimationStyle::Glow,
             _ => AnimationStyle::Neon,
         }
     }
@@ -118,12 +118,23 @@ pub fn calculate_color(
             b = ((b as f32 * (1.0 - mix)) + 128.0 * mix) as u8;
             (r, g, b)
         }
+        AnimationStyle::Glow => {
+            // Global slow breathing + subtle hue drift + mild per-char noise shimmer.
+            let base_hue = (time * 12.0) % 360.0;
+            let breath = (time * 0.9).sin() * 0.20 + 0.80; // 0.60..1.00
+            // Pseudo-random stable noise per char_pos
+            let n = ((char_pos as u32).wrapping_mul(2654435761) ^ 0x9e3779b9) as f32;
+            let noise = ((n.sin() * 43758.5453).fract() - 0.5) * 0.08; // small +/-
+            let v = (breath + noise).clamp(0.05, 1.0);
+            let sat = 0.55 + (breath - 0.8) * 0.3; // saturate slightly at peaks
+            hsv_to_rgb(base_hue, sat.clamp(0.3, 0.95), v)
+        }
     AnimationStyle::Matrix => (0, 255, 0), // Actual color generated in matrix::calculate_matrix_color_at
     AnimationStyle::Fire => (255, 80, 0),  // Actual color generated in fire::calculate_fire_color_at
     AnimationStyle::Fall => (200, 200, 200), // Actual color generated in fall simulation renderer
     AnimationStyle::Marquee => (160,160,160), // Actual color generated in marquee::calculate_marquee_color_at
     AnimationStyle::Typing => (200,200,200), // Actual color decided in typing renderer
     AnimationStyle::Plasma => (180,180,180), // Actual color generated in plasma module
-    AnimationStyle::Embers => (120,80,40),   // Actual color combined with ember particles in main
     }
 }
+

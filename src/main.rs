@@ -3,7 +3,7 @@ mod system; // system information collection
 mod util; // shared utilities (e.g. ANSI parsing)
 
 use animation::{
-    AnimationStyle, calculate_color, calculate_fire_color_at, calculate_matrix_color_at, calculate_marquee_color_at, calculate_plasma_color_at, calculate_embers_color_at, embers,
+    AnimationStyle, calculate_color, calculate_fire_color_at, calculate_matrix_color_at, calculate_marquee_color_at, calculate_plasma_color_at,
 };
 use system::generate_system_info;
 
@@ -44,7 +44,7 @@ fn show_animation_mode(
     // For Fall style we keep original layout; we'll build falling letters later from parsed grid.
     let start = Instant::now();
     let mut prev_widths: Vec<usize> = Vec::new();
-    // Spark particle systems (Fire & Embers)
+    // Spark particle system (Fire)
     #[derive(Clone, Copy)]
     struct Spark { x: usize, y: usize, life: f32, age: f32, peak: f32, hue_jitter: f32 }
     let mut sparks: Vec<Spark> = Vec::new();
@@ -302,7 +302,7 @@ fn show_animation_mode(
             }
             let mut out = stdout(); out.write_all(frame_buf.as_bytes())?; out.flush()?; prev_widths = new_widths; continue;
         }
-    if style == AnimationStyle::Fire || style == AnimationStyle::Embers {
+    if style == AnimationStyle::Fire {
             // Update ages
             for sp in sparks.iter_mut() { sp.age += dt_since; }
             // Remove finished
@@ -321,26 +321,6 @@ fn show_animation_mode(
                         let peak = 0.25 + fastrand::f32() * 0.45; // peak time fraction
                         let hue_jitter = fastrand::f32() * 80.0;
                         sparks.push(Spark { x: sx, y: by, life, age: 0.0, peak, hue_jitter });
-                    }
-                }
-            } else if style == AnimationStyle::Embers {
-                // Embers: more numerous, slow upward drift (handled later), longer life.
-                if sparks.len() < 80 {
-                    let remaining = 80 - sparks.len();
-                    let spawn_prob = 0.12_f32 * remaining as f32 / 80.0;
-                    if fastrand::f32() < spawn_prob {
-                        let sx = fastrand::usize(..(tw as usize).max(1));
-                        let by = fastrand::usize(..(th as usize).max(1));
-                        let life = 1.2 + fastrand::f32()*3.5; // longer
-                        let peak = 0.25 + fastrand::f32()*0.35;
-                        let hue_jitter = fastrand::f32() * 60.0; // smaller spread; keep warm band
-                        sparks.push(Spark { x: sx, y: by, life, age: 0.0, peak, hue_jitter });
-                    }
-                }
-                // Upward drift of embers (simple position tweak each frame)
-                for sp in sparks.iter_mut() {
-                    if fastrand::f32() < 0.65 { // probabilistic to avoid per-frame integer movement ramp
-                        if sp.y > 0 { sp.y -= 1; }
                     }
                 }
             }
@@ -402,8 +382,6 @@ fn show_animation_mode(
                     calculate_marquee_color_at(elapsed, li, printed, tw as usize, speed)
                 } else if style == AnimationStyle::Plasma {
                     calculate_plasma_color_at(elapsed, li, printed, tw as usize, th as usize, speed)
-                } else if style == AnimationStyle::Embers {
-                    calculate_embers_color_at(elapsed, li, printed)
                 } else {
                     let ci = line_offset + char_idx / spread;
                     // stable id per cell for smoother hue (avoid flicker from ever-growing global counter)
@@ -417,7 +395,7 @@ fn show_animation_mode(
                     char_idx += 1.0;
                     continue;
                 }
-                if style == AnimationStyle::Fire || style == AnimationStyle::Embers {
+                if style == AnimationStyle::Fire {
                     for sp in sparks.iter() {
                         if sp.x == printed && sp.y == li {
                             let t = (sp.age / sp.life).clamp(0.0, 1.0);
@@ -425,21 +403,9 @@ fn show_animation_mode(
                             let up = (t / sp.peak).clamp(0.0, 1.0);
                             let down = ((t - sp.peak) / (1.0 - sp.peak)).clamp(0.0, 1.0);
                             let envelope = if t < sp.peak { up.powf(0.8) } else { (1.0 - down).powf(1.6) };
-                            let flicker = if style == AnimationStyle::Fire {
-                                0.85 + (elapsed * 60.0 + (sp.x as f32 * 1.3)).sin() * 0.15
-                            } else {
-                                0.92 + (elapsed * 20.0 + sp.hue_jitter).sin()*0.10
-                            };
+                            let flicker = 0.85 + (elapsed * 60.0 + (sp.x as f32 * 1.3)).sin() * 0.15;
                             let w = (envelope * flicker).clamp(0.0, 1.0);
-                            let (hot_r, hot_g, hot_b) = if style == AnimationStyle::Fire {
-                                (255.0, 160.0 + sp.hue_jitter.min(70.0), (sp.hue_jitter * 0.9).min(120.0))
-                            } else {
-                                // Warm ember gradient near white at peak
-                                let base_intensity = w;
-                                let hue_base = 30.0; // warm orange/yellow
-                                let (er,eg,eb) = embers::ember_color(hue_base, base_intensity, sp.hue_jitter/60.0);
-                                (er as f32, eg as f32, eb as f32)
-                            };
+                            let (hot_r, hot_g, hot_b) = (255.0, 160.0 + sp.hue_jitter.min(70.0), (sp.hue_jitter * 0.9).min(120.0));
                             r = (r as f32 * (1.0 - w) + hot_r * w) as u8;
                             g = (g as f32 * (1.0 - w) + hot_g * w).min(255.0) as u8;
                             b = (b as f32 * (1.0 - w) + hot_b * w) as u8;
