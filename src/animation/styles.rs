@@ -12,6 +12,11 @@ pub enum AnimationStyle {
     Typing,
     Plasma,
     Glow,
+    Aurora,
+    Glitch,
+    PulseRings,
+    MeteorRain,
+    Lava,
 }
 
 impl AnimationStyle {
@@ -29,6 +34,11 @@ impl AnimationStyle {
             "typing" | "type" | "t" => AnimationStyle::Typing,
             "plasma" | "ps" => AnimationStyle::Plasma,
             "glow" | "g" => AnimationStyle::Glow,
+            "aurora" | "au" | "northern" => AnimationStyle::Aurora,
+            "glitch" | "gl" => AnimationStyle::Glitch,
+            "pulse-rings" | "pulserings" | "rings" | "pr" => AnimationStyle::PulseRings,
+            "meteor-rain" | "meteorrain" | "meteor" | "meteors" | "mr" => AnimationStyle::MeteorRain,
+            "lava" | "lv" => AnimationStyle::Lava,
             _ => AnimationStyle::Neon,
         }
     }
@@ -135,6 +145,11 @@ pub fn calculate_color(
     AnimationStyle::Marquee => (160,160,160), // Actual color generated in marquee::calculate_marquee_color_at
     AnimationStyle::Typing => (200,200,200), // Actual color decided in typing renderer
     AnimationStyle::Plasma => (180,180,180), // Actual color generated in plasma module
+    AnimationStyle::Aurora => (160,190,255), // Actual color generated in aurora module
+    AnimationStyle::Glitch => (200,200,200), // Actual color generated in glitch renderer
+    AnimationStyle::PulseRings => (200,200,200), // Actual color generated in pulse-rings module
+    AnimationStyle::MeteorRain => (180,180,180), // Actual color generated in meteor-rain renderer
+    AnimationStyle::Lava => (255,80,20), // Actual color generated in lava module
     }
 }
 

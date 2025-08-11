@@ -3,7 +3,18 @@ mod system; // system information collection
 mod util; // shared utilities (e.g. ANSI parsing)
 
 use animation::{
-    AnimationStyle, calculate_color, calculate_fire_color_at, calculate_matrix_color_at, calculate_marquee_color_at, calculate_plasma_color_at,
+    AnimationStyle,
+    calculate_color,
+    calculate_fire_color_at,
+    calculate_matrix_color_at,
+    calculate_marquee_color_at,
+    calculate_plasma_color_at,
+    calculate_aurora_color_at,
+    calculate_pulse_rings_color_at,
+    sample_meteor_color,
+    update_meteors,
+    Meteor,
+    calculate_lava_color_at,
 };
 use system::generate_system_info;
 
@@ -51,6 +62,12 @@ fn show_animation_mode(
     let mut last_frame_time: f32 = 0.0;
     let target_fps = color_fps.clamp(5.0, 240.0); // reuse color_fps as desired smoothness
     let frame_interval = 1.0 / target_fps;
+    // Meteor rain state
+    let mut meteors: Vec<Meteor> = Vec::new();
+    // Glitch state
+    struct GlitchBurst { start: f32, dur: f32 }
+    let mut glitch_bursts: Vec<GlitchBurst> = Vec::new();
+    let mut last_glitch_check: f32 = 0.0;
     // --- Fall style simulation state ---
     #[derive(Clone, Copy)]
     struct FallingLetter {
@@ -326,7 +343,7 @@ fn show_animation_mode(
             }
         }
         // Typing style: progressively reveal characters line by line, then pause, then reset.
-        if style == AnimationStyle::Typing {
+    if style == AnimationStyle::Typing {
             let reveal_speed = 120.0 * speed.max(0.05); // chars per second (faster)
             let total_chars: usize = parsed.iter().map(|r| r.iter().filter(|(a,ch)| a.is_empty() && *ch != '\0').count()).sum();
             let reveal_time = (total_chars as f32 / reveal_speed).max(0.0001);
@@ -359,6 +376,59 @@ fn show_animation_mode(
             let mut out = stdout();
             out.write_all(frame_buf.as_bytes())?; out.flush()?; prev_widths = new_widths; continue;
         }
+        // Glitch style: create intermittent short bursts that shift some columns and distort colors briefly.
+        if style == AnimationStyle::Glitch {
+            // Spawn bursts (probabilistic, max 3 overlapping)
+            if elapsed - last_glitch_check > 0.08 {
+                last_glitch_check = elapsed;
+                if glitch_bursts.len() < 3 && fastrand::f32() < 0.25 {
+                    let dur = 0.12 + fastrand::f32() * 0.25; // 0.12..0.37s
+                    glitch_bursts.push(GlitchBurst { start: elapsed, dur });
+                }
+                // prune
+                glitch_bursts.retain(|gb| elapsed < gb.start + gb.dur);
+            }
+            let mut out_cols_shift: Vec<i32> = Vec::new();
+            // derive aggregate distortion pattern
+            for gb in glitch_bursts.iter() {
+                let phase = ((elapsed - gb.start) / gb.dur).clamp(0.0,1.0);
+                let energy = if phase < 0.5 { (phase/0.5).powf(0.6) } else { (1.0 - (phase-0.5)/0.5).powf(1.4) };
+                let shifts = (energy * 6.0).ceil() as usize; // number of columns affected
+                for _ in 0..shifts {
+                    let col = fastrand::usize(..(size()?.0 as usize).max(1));
+                    let dir = if fastrand::bool() { 1 } else { -1 };
+                    if out_cols_shift.len() < col+1 { out_cols_shift.resize(col+1, 0); }
+                    out_cols_shift[col] += dir * (1 + fastrand::i32(0..2));
+                }
+            }
+            let twu = size()?.0 as usize;
+            for (li, row) in parsed.iter().take(max_lines).enumerate() {
+                frame_buf.push_str(&format!("\x1b[{};1H", li + 1));
+                let mut printed = 0usize;
+                for (ansi, ch) in row {
+                    if !ansi.is_empty() { continue; }
+                    if *ch == '\0' { continue; }
+                    if printed >= tw as usize { break; }
+                    // compute target column after shift
+                    let shift = if printed < out_cols_shift.len() { out_cols_shift[printed] } else { 0 };
+                    let dest_col = (printed as i32 + shift).clamp(0, twu as i32 -1) as usize;
+                    // color: base neon-like with harsher sat + random channel glitch
+                    let base_hue = (elapsed * 120.0 + (printed as f32)*3.0) % 360.0;
+                    let (mut r, mut g, mut b) = animation::styles::hsv_to_rgb(base_hue, 0.9, 0.85);
+                    // channel swapping / spike
+                    if fastrand::f32() < 0.08 { std::mem::swap(&mut r, &mut g); }
+                    if fastrand::f32() < 0.06 { b = b.saturating_add(70).min(255); }
+                    // write spaces until dest_col
+                    while printed < dest_col { frame_buf.push(' '); printed += 1; }
+                    frame_buf.push_str(&format!("\x1b[38;2;{};{};{}m{}", r,g,b,ch));
+                    printed += 1;
+                }
+                frame_buf.push_str("\x1b[0m");
+                if let Some(pw) = prev_widths.get(li) { if *pw > printed { frame_buf.push_str(&" ".repeat(pw - printed)); } }
+                new_widths.push(printed);
+            }
+            let mut out = stdout(); out.write_all(frame_buf.as_bytes())?; out.flush()?; prev_widths = new_widths; continue;
+        }
         for (li, row) in parsed.iter().take(max_lines).enumerate() {
             frame_buf.push_str(&format!("\x1b[{};1H", li + 1));
             let mut char_idx = 0f32;
@@ -382,6 +452,20 @@ fn show_animation_mode(
                     calculate_marquee_color_at(elapsed, li, printed, tw as usize, speed)
                 } else if style == AnimationStyle::Plasma {
                     calculate_plasma_color_at(elapsed, li, printed, tw as usize, th as usize, speed)
+                } else if style == AnimationStyle::Aurora {
+                    calculate_aurora_color_at(elapsed, li, printed, tw as usize, th as usize, speed)
+                } else if style == AnimationStyle::PulseRings {
+                    calculate_pulse_rings_color_at(elapsed, li, printed, tw as usize, th as usize, speed)
+                } else if style == AnimationStyle::MeteorRain {
+                    // Update meteor field once per row start? We update once per frame before rows.
+                    // (Handled below outside the row loop) Here we just sample.
+                    match sample_meteor_color(elapsed, li, printed, &meteors) { Some(c)=>c, None=>{
+                        let ci = line_offset + char_idx / spread;
+                        let stable_id = li * tw as usize + printed;
+                        calculate_color(&AnimationStyle::Glow, freq, ci, elapsed, stable_id) // subtle background
+                    }}
+                } else if style == AnimationStyle::Lava {
+                    calculate_lava_color_at(elapsed, li, printed, tw as usize, th as usize, speed)
                 } else {
                     let ci = line_offset + char_idx / spread;
                     // stable id per cell for smoother hue (avoid flicker from ever-growing global counter)
@@ -425,6 +509,10 @@ fn show_animation_mode(
             }
             new_widths.push(printed);
             line_offset += char_idx / spread;
+        }
+        // Meteor update (once per frame, after using previous state for this frame's sample) so trail stable across frame
+        if style == AnimationStyle::MeteorRain {
+            update_meteors(&mut meteors, dt_since, tw as usize, th as usize, speed);
         }
         // No dynamic line count changes now; skip clearing extra lines logic
         let mut out = stdout();

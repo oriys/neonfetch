@@ -1,20 +1,10 @@
 # neonfetch
-
-Animated system info fetch (Rust). Fast, colorful, minimal.
-
-## Showcase
-Embedded below are the recordings of several animation styles. (If a video does not appear, click the filename link.)
-
-<table>
-	<tr>
-		<td align="center" width="50%">
-			<b>neon</b><br>
-			<video width="300" muted autoplay loop playsinline preload="auto" src="neon.mp4">Your browser can't embed this video. <a href="neon.mp4">Download neon.mp4</a></video><br>
+ - pulse-rings – expanding concentric color rings from a drifting center
 			<code>--style neon</code><br>
 			<sub>Hue band + gentle breathing</sub>
 		</td>
 		<td align="center" width="50%">
-			<b>wave</b><br>
+ - `--style <name>`     neon | wave | pulse | matrix | fire | marquee | typing | plasma | glow | aurora | pulse-rings (default neon)
 			<video width="300" muted autoplay loop playsinline preload="auto" src="wave.mp4">Your browser can't embed this video. <a href="wave.mp4">Download wave.mp4</a></video><br>
 			<code>--style wave</code><br>
 			<sub>Luminance wave sweep</sub>
@@ -26,6 +16,7 @@ Embedded below are the recordings of several animation styles. (If a video does 
 			<video width="300" muted autoplay loop playsinline preload="auto" src="matrix.mp4">Your browser can't embed this video. <a href="matrix.mp4">Download matrix.mp4</a></video><br>
 			<code>--style matrix</code><br>
 			<sub>Code rain variation</sub>
+neonfetch --style pulse-rings --speed 1.1 --color-fps 50
 		</td>
 		<td align="center">
 			<b>fire (advanced)</b><br>
@@ -61,6 +52,11 @@ Host / OS / kernel / uptime / shell / terminal / CPU / GPU / memory / swap / dis
  - typing – progressive type-in reveal, then restart
  - plasma – flowing multi-sine color field
  - glow – soft global breathing glow with subtle per‑char shimmer
+ - aurora – drifting multi-ribbon teal/green/blue curtains
+ - glitch – intermittent column shifts & color channel distort bursts
+ - pulse-rings – expanding concentric color rings from a drifting center
+ - meteor-rain – diagonal multicolor shooting stars with fading trails
+ - lava – molten flowing heat-map (procedural layered noise)
 
 `classic` is deprecated and now aliases to `neon`.
 
@@ -80,7 +76,7 @@ neonfetch [options]
 ```
 Flags:
 - `--fetch` / `-f`     One-shot (no animation)
-- `--style <name>`     neon | wave | pulse | matrix | fire | marquee | typing | plasma | glow (default neon)
+- `--style <name>`     neon | wave | pulse | matrix | fire | marquee | typing | plasma | glow | aurora | glitch | pulse-rings | meteor-rain | lava (default neon)
 - `--fire-mode <m>`    basic | advanced (default advanced)
 - `--speed <x>`        Animation speed (0.1–10, default 1.0)
 - `--color-fps <n>`    Color refresh rate (5–120, default 30)
@@ -94,6 +90,11 @@ neonfetch --style marquee --speed 1.5
 neonfetch --style typing
 neonfetch --style plasma --speed 0.7
 neonfetch --style glow --color-fps 45
+neonfetch --style aurora --speed 1.2 --color-fps 40
+neonfetch --style glitch --speed 1.4 --color-fps 50
+neonfetch --style pulse-rings --speed 1.1 --color-fps 50
+neonfetch --style meteor-rain --speed 1.0 --color-fps 45
+neonfetch --style lava --speed 0.9 --color-fps 35
 ```
 
 ## Notes
