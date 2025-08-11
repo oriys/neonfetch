@@ -327,15 +327,12 @@ fn show_animation_mode(
         }
         // Typing style: progressively reveal characters line by line, then pause, then reset.
         if style == AnimationStyle::Typing {
-            let reveal_speed = 60.0 * speed.max(0.05); // chars per second
+            let reveal_speed = 120.0 * speed.max(0.05); // chars per second (faster)
             let total_chars: usize = parsed.iter().map(|r| r.iter().filter(|(a,ch)| a.is_empty() && *ch != '\0').count()).sum();
-            let cycle_pause = 1.2; // seconds full text stay visible
-            let total_time = (total_chars as f32 / reveal_speed) + cycle_pause;
-            let t_mod = elapsed % total_time;
-            let mut chars_to_show = if t_mod < (total_chars as f32 / reveal_speed) {
-                (t_mod * reveal_speed) as usize
-            } else { total_chars };
-            let show_all = chars_to_show >= total_chars;
+            let reveal_time = (total_chars as f32 / reveal_speed).max(0.0001);
+            let mut chars_to_show = if elapsed < reveal_time { (elapsed * reveal_speed) as usize } else { total_chars };
+            if chars_to_show > total_chars { chars_to_show = total_chars; }
+            let show_all = chars_to_show == total_chars;
             let mut shown_so_far = 0usize;
             for (li, row) in parsed.iter().take(max_lines).enumerate() {
                 frame_buf.push_str(&format!("\x1b[{};1H", li + 1));
