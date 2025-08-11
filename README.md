@@ -1,127 +1,228 @@
-# neonfetch
- - pulse-rings – expanding concentric color rings from a drifting center
-			<code>--style neon</code><br>
-			<sub>Hue band + gentle breathing</sub>
-		</td>
-		<td align="center" width="50%">
- - `--style <name>`     neon | wave | pulse | matrix | fire | marquee | typing | plasma | glow | aurora | pulse-rings (default neon)
-			<video width="300" muted autoplay loop playsinline preload="auto" src="wave.mp4">Your browser can't embed this video. <a href="wave.mp4">Download wave.mp4</a></video><br>
-			<code>--style wave</code><br>
-			<sub>Luminance wave sweep</sub>
-		</td>
-	</tr>
-	<tr>
-		<td align="center">
-			<b>matrix</b><br>
-			<video width="300" muted autoplay loop playsinline preload="auto" src="matrix.mp4">Your browser can't embed this video. <a href="matrix.mp4">Download matrix.mp4</a></video><br>
-			<code>--style matrix</code><br>
-			<sub>Code rain variation</sub>
-neonfetch --style pulse-rings --speed 1.1 --color-fps 50
-		</td>
-		<td align="center">
-			<b>fire (advanced)</b><br>
-			<video width="300" muted autoplay loop playsinline preload="auto" src="fire.mp4">Your browser can't embed this video. <a href="fire.mp4">Download fire.mp4</a></video><br>
-			<code>--style fire --fire-mode advanced</code><br>
-			<sub>Multi-band flame gradient</sub>
-		</td>
-	</tr>
-</table>
+# Neonfetch 🌈
 
-> Autoplay hints: Chrome only autoplays if the video is muted (done) and often when not hidden. Controls removed to reduce chance of blocking. If it still doesn't autoplay (GitHub may defer), open the raw file or allow site media autoplay in Chrome site settings. Videos are MP4 (H.264).
+A fast, colorful, and animated system information fetch tool written in Rust. Neonfetch displays your system information with beautiful ANSI animations and
+multiple visual styles.
 
-### Static Screenshots
-If videos do not load, here are static captures (click to open full size):
+![Neon Style](neon.png) ![Fire Style](fire.png) ![Matrix Style](matrix.png) ![Wave Style](wave.png)
 
-<p align="center">
-	<img src="neon.png" alt="neon" width="320" />
-	<img src="wave.png" alt="wave" width="320" />
-	<img src="matrix.png" alt="matrix" width="320" />
-	<img src="fire.png" alt="fire" width="320" />
-</p>
+## Features
 
-## What it shows
-Host / OS / kernel / uptime / shell / terminal / CPU / GPU / memory / swap / disk usage / IP / locale + an OS ASCII logo.
+- **16 Animation Styles**: Choose from various eye-catching visual effects
+- **Real-time System Info**: CPU, memory, disk, GPU, network, and more
+- **Cross-platform**: Works on macOS and Linux
+- **Customizable Speed**: Adjust animation speed to your preference
+- **Smooth Performance**: Optimized for minimal CPU usage
+- **ASCII Art**: Platform-specific logos and branding
 
-## Styles
-- neon (default) – moving hue band + gentle breathing
-- wave – brightness wave (light/dark flow)
-- pulse – traveling brightness pulse over a hue drift
-- matrix – green code rain style (per‑cell variation)
-- fire – flame gradient (basic / advanced)
-- marquee – horizontal moving highlight band (terminal marquee)
- - typing – progressive type-in reveal, then restart
- - plasma – flowing multi-sine color field
- - glow – soft global breathing glow with subtle per‑char shimmer
- - aurora – drifting multi-ribbon teal/green/blue curtains
- - glitch – intermittent column shifts & color channel distort bursts
- - pulse-rings – expanding concentric color rings from a drifting center
- - meteor-rain – diagonal multicolor shooting stars with fading trails
- - lava – molten flowing heat-map (procedural layered noise)
- - edge-glow – base neon with intensified character edge brightness
+## Installation
 
-`classic` is deprecated and now aliases to `neon`.
+### From Source
 
-## Install
-Requires Rust.
-
-```
-cargo install --path .
-# or build manually
+```bash
+git clone https://github.com/oriys/neonfetch
+cd neonfetch
 cargo build --release
 ```
-Binary: `target/release/neonfetch` (if built manually).
+
+The binary will be available at `target/release/neonfetch`.
+
+### Dependencies
+
+- Rust 2024 edition or later
+- System dependencies are automatically handled by Cargo
 
 ## Usage
-```
-neonfetch [options]
-```
-Flags:
-- `--fetch` / `-f`     One-shot (no animation)
-- `--style <name>`     neon | wave | pulse | matrix | fire | marquee | typing | plasma | glow | aurora | glitch | pulse-rings | meteor-rain | lava | edge-glow (default neon)
-- `--fire-mode <m>`    basic | advanced (default advanced)
-- `--speed <x>`        Animation speed (0.1–10, default 1.0)
-- `--color-fps <n>`    Color refresh rate (5–120, default 30)
 
-Examples:
-```
+### Basic Usage
+
+```bash
+# Run with default neon style
+neonfetch
+
+# Show system info once without animation
 neonfetch --fetch
-neonfetch --style wave --speed 0.8
-neonfetch --style fire --fire-mode basic --color-fps 20
-neonfetch --style marquee --speed 1.5
-neonfetch --style typing
-neonfetch --style plasma --speed 0.7
-neonfetch --style glow --color-fps 45
-neonfetch --style aurora --speed 1.2 --color-fps 40
-neonfetch --style glitch --speed 1.4 --color-fps 50
-neonfetch --style pulse-rings --speed 1.1 --color-fps 50
-neonfetch --style meteor-rain --speed 1.0 --color-fps 45
-neonfetch --style lava --speed 0.9 --color-fps 35
-neonfetch --style edge-glow --speed 1.0 --color-fps 40
 ```
 
-## Notes
-- System info gathered once then reused (avoids flicker).
-- Frame pacing smooths color changes.
-- Wave now uses brightness modulation (not full rainbow sweep).
+### Animation Styles
 
-## Dev
+Choose from 16 different animation styles:
+
+```bash
+# Neon glow effect (default)
+neonfetch --style neon
+
+# Matrix digital rain
+neonfetch --style matrix
+
+# Fire particle system
+neonfetch --style fire
+
+# Falling letters with physics
+neonfetch --style fall
+
+# Aurora borealis effect
+neonfetch --style aurora
+
+# Plasma waves
+neonfetch --style plasma
+
+# And many more...
 ```
-cargo fmt
-cargo clippy -- -D warnings
+
+#### Available Styles
+
+| Style         | Alias            | Description                   |
+|---------------|------------------|-------------------------------|
+| `neon`        | `n`              | Glowing neon effect (default) |
+| `wave`        | `w`              | Color wave animation          |
+| `pulse`       | `p`              | Pulsing color effect          |
+| `matrix`      | `m`              | Matrix-style digital rain     |
+| `fire`        | `f`              | Fire particle system          |
+| `fall`        | `s`, `stack`     | Physics-based falling letters |
+| `marquee`     | `mq`             | Scrolling marquee effect      |
+| `typing`      | `t`, `type`      | Typewriter animation          |
+| `plasma`      | `ps`             | Plasma wave patterns          |
+| `glow`        | `g`              | Soft glow effect              |
+| `aurora`      | `au`, `northern` | Aurora borealis               |
+| `glitch`      | `gl`             | Digital glitch effect         |
+| `pulse-rings` | `pr`, `rings`    | Expanding pulse rings         |
+| `meteor-rain` | `mr`, `meteor`   | Falling meteors               |
+| `lava`        | `lv`             | Lava flow effect              |
+| `edge-glow`   | `eg`             | Edge highlighting             |
+
+### Command Line Options
+
+```bash
+# Set animation speed (0.1 - 20.0, default: 1.0)
+neonfetch --speed 2.0
+neonfetch -s 0.5
+
+# Set color refresh rate (5.0 - 120.0 FPS, default: 30.0)
+neonfetch --color-fps 60
+
+# Combine options
+neonfetch --style fire --speed 1.5 --color-fps 45
+```
+
+### Examples
+
+```bash
+# Slow matrix effect
+neonfetch --style matrix --speed 0.3
+
+# Fast fire animation
+neonfetch --style fire --speed 3.0
+
+# Smooth aurora with high refresh rate
+neonfetch --style aurora --color-fps 60
+
+# Quick system info without animation
+neonfetch --fetch
+```
+
+## System Information Displayed
+
+Neonfetch shows comprehensive system information including:
+
+- **Host**: Computer model and hostname
+- **OS**: Operating system and version
+- **Kernel**: Kernel version
+- **Uptime**: System uptime
+- **Packages**: Installed package count (Homebrew on macOS, dpkg on Linux)
+- **Shell**: Current shell
+- **Resolution**: Display resolution
+- **DE/WM**: Desktop environment or window manager
+- **Theme**: System theme information
+- **Icons**: Icon theme
+- **Terminal**: Terminal emulator
+- **CPU**: Processor model and usage
+- **GPU**: Graphics card information
+- **Memory**: RAM usage and total
+- **Disk**: Storage usage
+- **Network**: Active network interface and IP
+
+## Technical Details
+
+### Performance
+
+- Written in Rust for optimal performance
+- Minimal CPU usage during animations
+- Efficient memory management
+- Smooth 30+ FPS animations by default
+
+### Platform Support
+
+- **macOS**: Full support with native system information gathering
+- **Linux**: Full support with comprehensive hardware detection
+- **Windows**: Not currently supported
+
+### Dependencies
+
+- `crossterm`: Cross-platform terminal manipulation
+- `sysinfo`: System information gathering
+- `regex`: Pattern matching for system parsing
+- `fastrand`: Fast random number generation for effects
+- `get_if_addrs`: Network interface detection
+- `atty`: TTY detection
+
+## Development
+
+### Building
+
+```bash
+# Debug build
+cargo build
+
+# Release build (recommended)
+cargo build --release
+
+# Run tests
 cargo test
 ```
 
-## License
-MIT
+### Project Structure
 
-## Release (packaging)
-Tag a version to trigger multi-target build & release assets:
 ```
-git tag -a v0.1.0 -m "v0.1.0"
-git push origin v0.1.0
+src/
+├── main.rs              # Main application logic and animation loop
+├── animation/           # Animation styles and effects
+│   ├── mod.rs          # Animation module exports
+│   ├── styles.rs       # Style definitions and color utilities
+│   ├── aurora.rs       # Aurora borealis effect
+│   ├── fire.rs         # Fire particle system
+│   ├── matrix.rs       # Matrix digital rain
+│   ├── plasma.rs       # Plasma wave effects
+│   └── ...            # Other animation implementations
+├── system/             # System information gathering
+│   ├── mod.rs         # System module exports
+│   ├── info.rs        # Main system info collection
+│   ├── logo_macos.rs  # macOS ASCII art
+│   └── logo_linux.rs  # Linux ASCII art
+└── util/              # Utilities
+    ├── mod.rs         # Utility module exports
+    └── ansi.rs        # ANSI escape sequence parsing
 ```
-Artifacts produced:
-- Linux: x86_64, aarch64
-- macOS: x86_64, arm64
-- Windows: x86_64
-Each archive name: `neonfetch-v<version>-<target>.{tar.gz|zip}`.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit pull requests or open issues for:
+
+- New animation styles
+- Performance improvements
+- Platform-specific enhancements
+- Bug fixes
+- Documentation improvements
+
+## License
+
+This project is licensed under the MIT License. See the LICENSE file for details.
+
+## Acknowledgments
+
+- Inspired by the original `neofetch` tool
+- Built with the amazing Rust ecosystem
+- Thanks to all contributors and users
+
+---
+
+*Neonfetch - Making system information beautiful, one animation at a time.* ✨
