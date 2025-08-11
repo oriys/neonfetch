@@ -302,26 +302,41 @@ fn show_animation_mode(
             }
             let mut out = stdout(); out.write_all(frame_buf.as_bytes())?; out.flush()?; prev_widths = new_widths; continue;
         }
-        if style == AnimationStyle::Fire {
+        if style == AnimationStyle::Fire || style == AnimationStyle::Sparks {
             // Update ages
             for sp in sparks.iter_mut() { sp.age += dt_since; }
             // Remove finished
             sparks.retain(|s| s.age < s.life);
-            // Spawn new scattered embers (cap <10) with random rows (prefer upper hotter zone?)
-            if sparks.len() < 10 {
-                // Spawn probability scaled by gap
-                let remaining = 10 - sparks.len();
-                let spawn_prob = 0.25_f32 * remaining as f32 / 10.0; // up to 0.25 when empty
-                if fastrand::f32() < spawn_prob {
-                    let sx = fastrand::usize(..(tw as usize).max(1));
-                    // Bias y toward middle/top of visible flames using quadratic distribution
-                    let h = th as usize;
-                    let r = fastrand::f32();
-                    let by = (r * r * h as f32).min(h.saturating_sub(1) as f32) as usize; // more weight near top
-                    let life = 0.18 + fastrand::f32() * 0.55; // short pop
-                    let peak = 0.25 + fastrand::f32() * 0.45; // peak time fraction
-                    let hue_jitter = fastrand::f32() * 80.0;
-                    sparks.push(Spark { x: sx, y: by, life, age: 0.0, peak, hue_jitter });
+            if style == AnimationStyle::Fire {
+                // Spawn new scattered embers (cap <10) with random rows (prefer upper hotter zone?)
+                if sparks.len() < 10 {
+                    let remaining = 10 - sparks.len();
+                    let spawn_prob = 0.25_f32 * remaining as f32 / 10.0; // up to 0.25 when empty
+                    if fastrand::f32() < spawn_prob {
+                        let sx = fastrand::usize(..(tw as usize).max(1));
+                        let h = th as usize;
+                        let r = fastrand::f32();
+                        let by = (r * r * h as f32).min(h.saturating_sub(1) as f32) as usize; // bias top
+                        let life = 0.18 + fastrand::f32() * 0.55; // short pop
+                        let peak = 0.25 + fastrand::f32() * 0.45; // peak time fraction
+                        let hue_jitter = fastrand::f32() * 80.0;
+                        sparks.push(Spark { x: sx, y: by, life, age: 0.0, peak, hue_jitter });
+                    }
+                }
+            } else if style == AnimationStyle::Sparks {
+                // Simpler random spark field (floating fireflies) with gentler motion.
+                // Maintain up to 35 sparks; spawn probability proportional to deficit.
+                if sparks.len() < 35 {
+                    let remaining = 35 - sparks.len();
+                    let spawn_prob = 0.18_f32 * remaining as f32 / 35.0; // softer rate
+                    if fastrand::f32() < spawn_prob {
+                        let sx = fastrand::usize(..(tw as usize).max(1));
+                        let by = fastrand::usize(..(th as usize).max(1));
+                        let life = 0.6 + fastrand::f32()*1.8; // longer life
+                        let peak = 0.30 + fastrand::f32()*0.25;
+                        let hue_jitter = fastrand::f32() * 300.0; // broader color spread
+                        sparks.push(Spark { x: sx, y: by, life, age: 0.0, peak, hue_jitter });
+                    }
                 }
             }
         }
@@ -393,7 +408,7 @@ fn show_animation_mode(
                     char_idx += 1.0;
                     continue;
                 }
-                if style == AnimationStyle::Fire {
+                if style == AnimationStyle::Fire || style == AnimationStyle::Sparks {
                     for sp in sparks.iter() {
                         if sp.x == printed && sp.y == li {
                             let t = (sp.age / sp.life).clamp(0.0, 1.0);
@@ -401,12 +416,16 @@ fn show_animation_mode(
                             let up = (t / sp.peak).clamp(0.0, 1.0);
                             let down = ((t - sp.peak) / (1.0 - sp.peak)).clamp(0.0, 1.0);
                             let envelope = if t < sp.peak { up.powf(0.8) } else { (1.0 - down).powf(1.6) };
-                            let flicker = 0.85 + (elapsed * 60.0 + (sp.x as f32 * 1.3)).sin() * 0.15;
+                            let flicker = if style == AnimationStyle::Fire { 0.85 + (elapsed * 60.0 + (sp.x as f32 * 1.3)).sin() * 0.15 } else { 0.90 + (elapsed * 25.0 + sp.hue_jitter).sin()*0.08 };
                             let w = (envelope * flicker).clamp(0.0, 1.0);
-                            // Color: hot core -> slight jitter orange/yellow -> hint of white
-                            let hot_r = 255.0;
-                            let hot_g = 160.0 + sp.hue_jitter.min(70.0);
-                            let hot_b = (sp.hue_jitter * 0.9).min(120.0);
+                            let (hot_r, hot_g, hot_b) = if style == AnimationStyle::Fire {
+                                (255.0, 160.0 + sp.hue_jitter.min(70.0), (sp.hue_jitter * 0.9).min(120.0))
+                            } else {
+                                // Sparks: colorful fireflies
+                                let hue = (sp.hue_jitter + elapsed * 40.0) % 360.0;
+                                let (rr,gg,bb) = animation::styles::hsv_to_rgb(hue, 0.70, 1.0);
+                                (rr as f32, gg as f32, bb as f32)
+                            };
                             r = (r as f32 * (1.0 - w) + hot_r * w) as u8;
                             g = (g as f32 * (1.0 - w) + hot_g * w).min(255.0) as u8;
                             b = (b as f32 * (1.0 - w) + hot_b * w) as u8;

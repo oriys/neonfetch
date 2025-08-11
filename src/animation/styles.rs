@@ -10,6 +10,7 @@ pub enum AnimationStyle {
     Fall,
     Marquee,
     Typing,
+    Sparks,
 }
 
 impl AnimationStyle {
@@ -25,6 +26,7 @@ impl AnimationStyle {
             "fall" | "stack" | "s" => AnimationStyle::Fall,
             "marquee" | "mq" => AnimationStyle::Marquee,
             "typing" | "type" | "t" => AnimationStyle::Typing,
+            "sparks" | "spark" | "sp" => AnimationStyle::Sparks,
             _ => AnimationStyle::Neon,
         }
     }
@@ -119,5 +121,6 @@ pub fn calculate_color(
     AnimationStyle::Fall => (200, 200, 200), // Actual color generated in fall simulation renderer
     AnimationStyle::Marquee => (160,160,160), // Actual color generated in marquee::calculate_marquee_color_at
     AnimationStyle::Typing => (200,200,200), // Actual color decided in typing renderer
+    AnimationStyle::Sparks => (150,150,150), // Actual color modified per spark overlay
     }
 }
