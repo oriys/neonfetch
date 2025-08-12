@@ -83,6 +83,12 @@ neonfetch --style aurora
 neonfetch --style plasma
 
 # And many more...
+
+# Pick a random style
+neonfetch --style random
+
+# List all available styles
+neonfetch --list-styles
 ```
 
 #### Available Styles
@@ -116,9 +122,33 @@ neonfetch -s 0.5
 # Set color refresh rate (5.0 - 120.0 FPS, default: 30.0)
 neonfetch --color-fps 60
 
+# Limit animation duration in seconds
+neonfetch --duration 5
+
+# Render a single frame and exit (useful for screenshots)
+neonfetch --frame
+
 # Hide ASCII logo (show only info list)
 neonfetch --no-logo
 neonfetch -L
+
+# JSON output (machine-readable, prints and exits)
+neonfetch --json
+neonfetch --json --no-logo
+
+# Grayscale or plain text (no ANSI colors)
+neonfetch --mono
+neonfetch --no-color
+
+# Skip package manager detection
+neonfetch --no-packages
+neonfetch -P
+
+# Hide the username@hostname header
+neonfetch --no-header
+
+# Deterministic animations with a fixed random seed
+neonfetch --seed 42
 
 # Combine options
 neonfetch --style fire --speed 1.5 --color-fps 45 --no-logo

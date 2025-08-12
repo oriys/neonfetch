@@ -21,10 +21,45 @@ use util::ansi::parse_ansi_text;
 
 fn main() -> io::Result<()> {
     let args: Vec<String> = env::args().collect();
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        print_help();
+        return Ok(());
+    }
+    if args.iter().any(|a| a == "--version" || a == "-V") {
+        print_version();
+        return Ok(());
+    }
+    if args.iter().any(|a| a == "--list-styles") {
+        println!("{}", animation::styles::AnimationStyle::available_styles().join("\n"));
+        return Ok(());
+    }
     let show_logo = !parse_no_logo_argument(&args);
+    let show_packages = !parse_no_packages_argument(&args);
+    let mono = parse_mono_argument(&args);
+    let no_color = parse_no_color_argument(&args);
+    let max_frames = if parse_frame_argument(&args) { Some(1usize) } else { None };
+    let show_header = !parse_no_header_argument(&args);
+    if let Some(seed) = parse_seed_argument(&args) {
+        fastrand::seed(seed);
+    }
+    // Auto fallback to one-shot in non-TTY pipelines
+    let is_tty = atty::is(atty::Stream::Stdout);
+    if !is_tty && !parse_json_argument(&args) {
+        let lines = generate_system_info(show_logo, show_packages, show_header);
+        for line in lines {
+            println!("{}", line);
+        }
+        return Ok(());
+    }
+    if parse_json_argument(&args) {
+        let lines = generate_system_info(show_logo, show_packages, show_header);
+        let json = serde_json::to_string(&lines).unwrap_or_else(|_| "[]".to_string());
+        println!("{}", json);
+        return Ok(());
+    }
     if parse_fetch_argument(&args) {
         // One-shot system info output, no animation
-        let lines = generate_system_info(show_logo);
+        let lines = generate_system_info(show_logo, show_packages, show_header);
         let mut out = stdout();
         for line in lines {
             writeln!(out, "{}", line)?;
@@ -38,8 +73,21 @@ fn main() -> io::Result<()> {
         speed = 10.0; // Matrix default speed = 10 when not specified
     }
     let color_fps = parse_color_fps_argument(&args);
-    let sysinfo = generate_system_info(show_logo);
-    show_animation_mode(&sysinfo, speed, style, color_fps, show_logo)
+    let duration = parse_duration_argument(&args);
+    let sysinfo = generate_system_info(show_logo, show_packages, show_header);
+    show_animation_mode(
+        &sysinfo,
+        speed,
+        style,
+        color_fps,
+        show_logo,
+        show_packages,
+        duration,
+    mono,
+    no_color,
+    max_frames,
+        show_header,
+    )
 }
 
 fn show_animation_mode(
@@ -48,11 +96,17 @@ fn show_animation_mode(
     style: AnimationStyle,
     color_fps: f32,
     show_logo: bool,
+    show_packages: bool,
+    duration: Option<f32>,
+    mono: bool,
+    no_color: bool,
+    max_frames: Option<usize>,
+    show_header: bool,
 ) -> io::Result<()> {
     let freq = 0.1f32;
     let spread = 3.0f32;
     // Generate system info only once to avoid flicker from content changes.
-    let lines = generate_system_info(show_logo);
+    let lines = generate_system_info(show_logo, show_packages, show_header);
     let parsed: Vec<Vec<(String, char)>> = lines.iter().map(|l| parse_ansi_text(l)).collect();
     // For Fall style we keep original layout; we'll build falling letters later from parsed grid.
     let start = Instant::now();
@@ -108,8 +162,18 @@ fn show_animation_mode(
     let mut last_dims: (u16, u16) = (0, 0);
     print!("\x1b[?25l\x1b[H");
     stdout().flush()?;
+    let mut frames_rendered: usize = 0;
     loop {
-        let elapsed = start.elapsed().as_secs_f32() * speed.max(0.05);
+        let real_elapsed = start.elapsed().as_secs_f32();
+        if let Some(dur) = duration {
+            if real_elapsed >= dur {
+                // restore cursor and reset
+                print!("\x1b[?25h\x1b[0m\n");
+                stdout().flush()?;
+                return Ok(());
+            }
+        }
+        let elapsed = real_elapsed * speed.max(0.05);
         // Frame pacing for smooth continuous transitions
         let dt_since = elapsed - last_frame_time;
         if dt_since < frame_interval {
@@ -426,8 +490,19 @@ fn show_animation_mode(
                     if printed_char == ' ' {
                         frame_buf.push(' ');
                     } else {
-                        frame_buf
-                            .push_str(&format!("\x1b[38;2;{};{};{}m{}", r, g, b, printed_char));
+                        if mono {
+                            let y = (0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32)
+                                .round()
+                                .clamp(0.0, 255.0) as u8;
+                            r = y;
+                            g = y;
+                            b = y;
+                        }
+                        if no_color {
+                            frame_buf.push(printed_char);
+                        } else {
+                            frame_buf.push_str(&format!("\x1b[38;2;{};{};{}m{}", r, g, b, printed_char));
+                        }
                     }
                 }
                 frame_buf.push_str("\x1b[0m");
@@ -436,6 +511,14 @@ fn show_animation_mode(
             let mut out = stdout();
             out.write_all(frame_buf.as_bytes())?;
             out.flush()?;
+            frames_rendered += 1;
+            if let Some(limit) = max_frames {
+                if frames_rendered >= limit {
+                    print!("\x1b[?25h\x1b[0m\n");
+                    out.flush()?;
+                    return Ok(());
+                }
+            }
             prev_widths = new_widths;
             continue;
         }
@@ -513,7 +596,20 @@ fn show_animation_mode(
                         let hue =
                             (elapsed * 35.0 + (printed as f32) * 1.5 + (li as f32) * 4.0) % 360.0;
                         let (r, g, b) = animation::styles::hsv_to_rgb(hue, 0.25, 0.92);
-                        frame_buf.push_str(&format!("\x1b[38;2;{};{};{}m{}", r, g, b, ch));
+                        let (mut r, mut g, mut b) = (r, g, b);
+                        if mono {
+                            let y = (0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32)
+                                .round()
+                                .clamp(0.0, 255.0) as u8;
+                            r = y;
+                            g = y;
+                            b = y;
+                        }
+                        if no_color {
+                            frame_buf.push(*ch);
+                        } else {
+                            frame_buf.push_str(&format!("\x1b[38;2;{};{};{}m{}", r, g, b, ch));
+                        }
                     } else {
                         frame_buf.push(' ');
                     }
@@ -525,6 +621,14 @@ fn show_animation_mode(
             let mut out = stdout();
             out.write_all(frame_buf.as_bytes())?;
             out.flush()?;
+            frames_rendered += 1;
+            if let Some(limit) = max_frames {
+                if frames_rendered >= limit {
+                    print!("\x1b[?25h\x1b[0m\n");
+                    out.flush()?;
+                    return Ok(());
+                }
+            }
             prev_widths = new_widths;
             continue;
         }
@@ -598,7 +702,20 @@ fn show_animation_mode(
                         frame_buf.push(' ');
                         printed += 1;
                     }
-                    frame_buf.push_str(&format!("\x1b[38;2;{};{};{}m{}", r, g, b, ch));
+                    let (mut r, mut g, mut b) = (r, g, b);
+                    if mono {
+                        let y = (0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32)
+                            .round()
+                            .clamp(0.0, 255.0) as u8;
+                        r = y;
+                        g = y;
+                        b = y;
+                    }
+                    if no_color {
+                        frame_buf.push(*ch);
+                    } else {
+                        frame_buf.push_str(&format!("\x1b[38;2;{};{};{}m{}", r, g, b, ch));
+                    }
                     printed += 1;
                 }
                 frame_buf.push_str("\x1b[0m");
@@ -612,6 +729,14 @@ fn show_animation_mode(
             let mut out = stdout();
             out.write_all(frame_buf.as_bytes())?;
             out.flush()?;
+            frames_rendered += 1;
+            if let Some(limit) = max_frames {
+                if frames_rendered >= limit {
+                    print!("\x1b[?25h\x1b[0m\n");
+                    out.flush()?;
+                    return Ok(());
+                }
+            }
             prev_widths = new_widths;
             continue;
         }
@@ -717,7 +842,19 @@ fn show_animation_mode(
                         b = nb;
                     }
                 }
-                frame_buf.push_str(&format!("\x1b[38;2;{};{};{}m{}", r, g, b, ch));
+                if mono {
+                    let y = (0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32)
+                        .round()
+                        .clamp(0.0, 255.0) as u8;
+                    r = y;
+                    g = y;
+                    b = y;
+                }
+                if no_color {
+                    frame_buf.push(*ch);
+                } else {
+                    frame_buf.push_str(&format!("\x1b[38;2;{};{};{}m{}", r, g, b, ch));
+                }
                 printed += 1;
                 char_idx += 1.0;
             }
@@ -733,6 +870,14 @@ fn show_animation_mode(
         let mut out = stdout();
         out.write_all(frame_buf.as_bytes())?;
         out.flush()?;
+        frames_rendered += 1;
+        if let Some(limit) = max_frames {
+            if frames_rendered >= limit {
+                print!("\x1b[?25h\x1b[0m\n");
+                out.flush()?;
+                return Ok(());
+            }
+        }
         prev_widths = new_widths;
     }
 }
@@ -757,16 +902,50 @@ fn parse_style_argument(args: &[String]) -> AnimationStyle {
     for i in 0..args.len() {
         if args[i] == "--style" || args[i] == "--animation" {
             if i + 1 < args.len() {
-                return AnimationStyle::from_str(&args[i + 1]);
+                let s = &args[i + 1];
+                if s.eq_ignore_ascii_case("random") || s.eq_ignore_ascii_case("rand") {
+                    return pick_random_style();
+                }
+                return AnimationStyle::from_str(s);
             }
         } else if let Some(rest) = args[i].strip_prefix("--style=") {
+            if rest.eq_ignore_ascii_case("random") || rest.eq_ignore_ascii_case("rand") {
+                return pick_random_style();
+            }
             return AnimationStyle::from_str(rest);
         } else if let Some(rest) = args[i].strip_prefix("--animation=") {
+            if rest.eq_ignore_ascii_case("random") || rest.eq_ignore_ascii_case("rand") {
+                return pick_random_style();
+            }
             return AnimationStyle::from_str(rest);
         }
     }
     // Default style now Neon
     AnimationStyle::Neon
+}
+
+fn pick_random_style() -> AnimationStyle {
+    use animation::styles::AnimationStyle as AS;
+    let styles = [
+        AS::Neon,
+        AS::Wave,
+        AS::Pulse,
+        AS::Matrix,
+        AS::Fire,
+        AS::Fall,
+        AS::Marquee,
+        AS::Typing,
+        AS::Plasma,
+        AS::Glow,
+        AS::Aurora,
+        AS::Glitch,
+        AS::PulseRings,
+        AS::MeteorRain,
+        AS::Lava,
+        AS::EdgeGlow,
+    ];
+    let idx = fastrand::usize(..styles.len());
+    styles[idx].clone()
 }
 
 fn parse_color_fps_argument(args: &[String]) -> f32 {
@@ -797,4 +976,83 @@ fn parse_no_logo_argument(args: &[String]) -> bool {
 
 fn parse_fetch_argument(args: &[String]) -> bool {
     args.iter().any(|a| a == "--fetch")
+}
+
+fn parse_json_argument(args: &[String]) -> bool {
+    args.iter().any(|a| a == "--json")
+}
+
+fn parse_no_color_argument(args: &[String]) -> bool {
+    args.iter().any(|a| a == "--no-color" || a == "-C")
+}
+
+fn parse_mono_argument(args: &[String]) -> bool {
+    args.iter().any(|a| a == "--mono")
+}
+
+fn parse_frame_argument(args: &[String]) -> bool {
+    args.iter().any(|a| a == "--frame")
+}
+
+fn parse_duration_argument(args: &[String]) -> Option<f32> {
+    for i in 0..args.len() {
+        if args[i] == "--duration" {
+            if i + 1 < args.len() {
+                if let Ok(v) = args[i + 1].parse::<f32>() {
+                    if v > 0.0 {
+                        return Some(v);
+                    }
+                }
+            }
+        } else if let Some(rest) = args[i].strip_prefix("--duration=") {
+            if let Ok(v) = rest.parse::<f32>() {
+                if v > 0.0 {
+                    return Some(v);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn parse_no_packages_argument(args: &[String]) -> bool {
+    for arg in args {
+        if arg == "--no-packages" || arg == "--no-pkgs" || arg == "-P" {
+            return true;
+        }
+    }
+    false
+}
+
+fn parse_no_header_argument(args: &[String]) -> bool {
+    args.iter().any(|a| a == "--no-header")
+}
+
+fn parse_seed_argument(args: &[String]) -> Option<u64> {
+    for i in 0..args.len() {
+        if args[i] == "--seed" {
+            if i + 1 < args.len() {
+                if let Ok(v) = args[i + 1].parse::<u64>() {
+                    return Some(v);
+                }
+            }
+        } else if let Some(rest) = args[i].strip_prefix("--seed=") {
+            if let Ok(v) = rest.parse::<u64>() {
+                return Some(v);
+            }
+        }
+    }
+    None
+}
+
+fn print_help() {
+    let styles = animation::styles::AnimationStyle::available_styles().join(", ");
+    println!(
+    "neonfetch - fast colorful animated system info\n\nUsage:\n  neonfetch [options]\n\nOptions:\n  --style <name>        Animation style (default: neon; or 'random')\n  --speed <val>         Animation speed (0.1-20.0, default 1.0)\n  --color-fps <val>     Color refresh FPS (5-120, default 30)\n  --duration <sec>      Auto-exit after N seconds (animation mode)\n  --frame               Render one frame and exit (animation mode)\n  --fetch               Print info once and exit\n  --json                Print JSON array and exit\n  --mono                Render in grayscale (animations/info)\n  --no-color, -C        Disable ANSI colors (plain text)\n  --no-logo, -L         Hide ASCII logo\n  --no-packages, -P     Skip package manager detection\n  --no-header           Hide username@hostname header divider\n  --seed <u64>          Deterministic random seed for animations\n  --list-styles         List available styles\n  -h, --help            Show this help\n  -V, --version         Show version\n\nStyles:\n  {}",
+        styles
+    );
+}
+
+fn print_version() {
+    println!("neonfetch {}", env!("CARGO_PKG_VERSION"));
 }

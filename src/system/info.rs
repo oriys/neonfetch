@@ -7,7 +7,7 @@ use std::fs;
 use std::process::Command;
 use sysinfo::{Disks, System};
 
-pub fn generate_system_info(show_logo: bool) -> Vec<String> {
+pub fn generate_system_info(show_logo: bool, show_packages: bool, show_header: bool) -> Vec<String> {
     let mut sys = System::new_all();
     // Explicit refresh to ensure CPU list populated on some platforms
     sys.refresh_all();
@@ -111,8 +111,11 @@ pub fn generate_system_info(show_logo: bool) -> Vec<String> {
         .or_else(|_| env::var("USERNAME"))
         .unwrap_or_else(|_| "user".to_string());
     let hostname = System::host_name().unwrap_or_else(|| "hostname".to_string());
-
-    let mut info_lines = vec![format!("{}@{}", username, hostname), "-------".to_string()];
+    let mut info_lines = Vec::new();
+    if show_header {
+        info_lines.push(format!("{}@{}", username, hostname));
+        info_lines.push("-------".to_string());
+    }
 
     if let Some(os_name) = System::name() {
         if let Some(os_version) = System::os_version() {
@@ -510,8 +513,10 @@ pub fn generate_system_info(show_logo: bool) -> Vec<String> {
         }
         None
     }
-    if let Some(pkgs) = detect_pkg_count() {
-        info_lines.push(format!("Packages: {}", pkgs));
+    if show_packages {
+        if let Some(pkgs) = detect_pkg_count() {
+            info_lines.push(format!("Packages: {}", pkgs));
+        }
     }
 
     // Temperature sensors (simple average / first) Linux only; macOS left N/A for now
@@ -637,9 +642,10 @@ pub fn generate_system_info(show_logo: bool) -> Vec<String> {
     info_lines.push(format!("Locale: {}", locale));
 
     let mut result = Vec::new();
-    // If no logo, don't offset info lines; else keep spacing with 2-line header and ascii width pad
+    // If a logo is shown, offset info by 2 lines only when the header is present
+    let info_offset = if show_logo && show_header { 2 } else { 0 };
     let max_lines = if show_logo {
-        info.len().max(info_lines.len() + 2)
+        info.len().max(info_lines.len() + info_offset)
     } else {
         info_lines.len()
     };
@@ -650,8 +656,8 @@ pub fn generate_system_info(show_logo: bool) -> Vec<String> {
             } else {
                 "                                  "
             };
-            let info_part = if i >= 2 && i - 2 < info_lines.len() {
-                &info_lines[i - 2]
+            let info_part = if i >= info_offset && i - info_offset < info_lines.len() {
+                &info_lines[i - info_offset]
             } else {
                 ""
             };

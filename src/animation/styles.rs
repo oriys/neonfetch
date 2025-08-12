@@ -46,6 +46,27 @@ impl AnimationStyle {
             _ => AnimationStyle::Neon,
         }
     }
+
+    pub fn available_styles() -> &'static [&'static str] {
+        &[
+            "neon",
+            "wave",
+            "pulse",
+            "matrix",
+            "fire",
+            "fall",
+            "marquee",
+            "typing",
+            "plasma",
+            "glow",
+            "aurora",
+            "glitch",
+            "pulse-rings",
+            "meteor-rain",
+            "lava",
+            "edge-glow",
+        ]
+    }
 }
 
 // HSV to RGB conversion (used by neon / pulse styles)
