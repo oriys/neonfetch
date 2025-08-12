@@ -21,6 +21,16 @@ use util::ansi::parse_ansi_text;
 
 fn main() -> io::Result<()> {
     let args: Vec<String> = env::args().collect();
+    let show_logo = !parse_no_logo_argument(&args);
+    if parse_fetch_argument(&args) {
+        // One-shot system info output, no animation
+        let lines = generate_system_info(show_logo);
+        let mut out = stdout();
+        for line in lines {
+            writeln!(out, "{}", line)?;
+        }
+        return Ok(());
+    }
     // Parse style first so we can decide default speed for Matrix.
     let style = parse_style_argument(&args);
     let (mut speed, speed_set) = parse_speed_argument(&args);
@@ -28,8 +38,8 @@ fn main() -> io::Result<()> {
         speed = 10.0; // Matrix default speed = 10 when not specified
     }
     let color_fps = parse_color_fps_argument(&args);
-    let sysinfo = generate_system_info();
-    show_animation_mode(&sysinfo, speed, style, color_fps)
+    let sysinfo = generate_system_info(show_logo);
+    show_animation_mode(&sysinfo, speed, style, color_fps, show_logo)
 }
 
 fn show_animation_mode(
@@ -37,11 +47,12 @@ fn show_animation_mode(
     speed: f32,
     style: AnimationStyle,
     color_fps: f32,
+    show_logo: bool,
 ) -> io::Result<()> {
     let freq = 0.1f32;
     let spread = 3.0f32;
     // Generate system info only once to avoid flicker from content changes.
-    let lines = generate_system_info();
+    let lines = generate_system_info(show_logo);
     let parsed: Vec<Vec<(String, char)>> = lines.iter().map(|l| parse_ansi_text(l)).collect();
     // For Fall style we keep original layout; we'll build falling letters later from parsed grid.
     let start = Instant::now();
@@ -773,4 +784,17 @@ fn parse_color_fps_argument(args: &[String]) -> f32 {
         }
     }
     30.0
+}
+
+fn parse_no_logo_argument(args: &[String]) -> bool {
+    for arg in args {
+        if arg == "--no-logo" || arg == "-L" {
+            return true;
+        }
+    }
+    false
+}
+
+fn parse_fetch_argument(args: &[String]) -> bool {
+    args.iter().any(|a| a == "--fetch")
 }

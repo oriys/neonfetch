@@ -116,8 +116,12 @@ neonfetch -s 0.5
 # Set color refresh rate (5.0 - 120.0 FPS, default: 30.0)
 neonfetch --color-fps 60
 
+# Hide ASCII logo (show only info list)
+neonfetch --no-logo
+neonfetch -L
+
 # Combine options
-neonfetch --style fire --speed 1.5 --color-fps 45
+neonfetch --style fire --speed 1.5 --color-fps 45 --no-logo
 ```
 
 ### Examples

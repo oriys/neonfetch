@@ -7,7 +7,7 @@ use std::fs;
 use std::process::Command;
 use sysinfo::{Disks, System};
 
-pub fn generate_system_info() -> Vec<String> {
+pub fn generate_system_info(show_logo: bool) -> Vec<String> {
     let mut sys = System::new_all();
     // Explicit refresh to ensure CPU list populated on some platforms
     sys.refresh_all();
@@ -101,8 +101,11 @@ pub fn generate_system_info() -> Vec<String> {
         None
     }
 
-    let ascii = ascii_logo();
-    let info: Vec<String> = ascii.into_iter().map(|s| s.to_string()).collect();
+    let ascii = if show_logo { Some(ascii_logo()) } else { None };
+    let info: Vec<String> = match ascii {
+        Some(ascii_lines) => ascii_lines.into_iter().map(|s| s.to_string()).collect(),
+        None => Vec::new(),
+    };
 
     let username = env::var("USER")
         .or_else(|_| env::var("USERNAME"))
@@ -634,19 +637,29 @@ pub fn generate_system_info() -> Vec<String> {
     info_lines.push(format!("Locale: {}", locale));
 
     let mut result = Vec::new();
-    let max_lines = info.len().max(info_lines.len() + 2);
+    // If no logo, don't offset info lines; else keep spacing with 2-line header and ascii width pad
+    let max_lines = if show_logo {
+        info.len().max(info_lines.len() + 2)
+    } else {
+        info_lines.len()
+    };
     for i in 0..max_lines {
-        let ascii_part = if i < info.len() {
-            &info[i]
+        if show_logo {
+            let ascii_part = if i < info.len() {
+                &info[i]
+            } else {
+                "                                  "
+            };
+            let info_part = if i >= 2 && i - 2 < info_lines.len() {
+                &info_lines[i - 2]
+            } else {
+                ""
+            };
+            result.push(format!("{}{}", ascii_part, info_part));
         } else {
-            "                                  "
-        };
-        let info_part = if i >= 2 && i - 2 < info_lines.len() {
-            &info_lines[i - 2]
-        } else {
-            ""
-        };
-        result.push(format!("{}{}", ascii_part, info_part));
+            let info_part = if i < info_lines.len() { &info_lines[i] } else { "" };
+            result.push(info_part.to_string());
+        }
     }
     result
 }
