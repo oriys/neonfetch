@@ -7,7 +7,11 @@ use std::fs;
 use std::process::Command;
 use sysinfo::{Disks, System};
 
-pub fn generate_system_info(show_logo: bool, show_packages: bool, show_header: bool) -> Vec<String> {
+pub fn generate_system_info(
+    show_logo: bool,
+    show_packages: bool,
+    show_header: bool,
+) -> Vec<String> {
     let mut sys = System::new_all();
     // Explicit refresh to ensure CPU list populated on some platforms
     sys.refresh_all();
@@ -663,7 +667,11 @@ pub fn generate_system_info(show_logo: bool, show_packages: bool, show_header: b
             };
             result.push(format!("{}{}", ascii_part, info_part));
         } else {
-            let info_part = if i < info_lines.len() { &info_lines[i] } else { "" };
+            let info_part = if i < info_lines.len() {
+                &info_lines[i]
+            } else {
+                ""
+            };
             result.push(info_part.to_string());
         }
     }

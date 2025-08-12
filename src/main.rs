@@ -30,14 +30,21 @@ fn main() -> io::Result<()> {
         return Ok(());
     }
     if args.iter().any(|a| a == "--list-styles") {
-        println!("{}", animation::styles::AnimationStyle::available_styles().join("\n"));
+        println!(
+            "{}",
+            animation::styles::AnimationStyle::available_styles().join("\n")
+        );
         return Ok(());
     }
     let show_logo = !parse_no_logo_argument(&args);
     let show_packages = !parse_no_packages_argument(&args);
     let mono = parse_mono_argument(&args);
     let no_color = parse_no_color_argument(&args);
-    let max_frames = if parse_frame_argument(&args) { Some(1usize) } else { None };
+    let max_frames = if parse_frame_argument(&args) {
+        Some(1usize)
+    } else {
+        None
+    };
     let show_header = !parse_no_header_argument(&args);
     if let Some(seed) = parse_seed_argument(&args) {
         fastrand::seed(seed);
@@ -83,9 +90,9 @@ fn main() -> io::Result<()> {
         show_logo,
         show_packages,
         duration,
-    mono,
-    no_color,
-    max_frames,
+        mono,
+        no_color,
+        max_frames,
         show_header,
     )
 }
@@ -501,7 +508,8 @@ fn show_animation_mode(
                         if no_color {
                             frame_buf.push(printed_char);
                         } else {
-                            frame_buf.push_str(&format!("\x1b[38;2;{};{};{}m{}", r, g, b, printed_char));
+                            frame_buf
+                                .push_str(&format!("\x1b[38;2;{};{};{}m{}", r, g, b, printed_char));
                         }
                     }
                 }
@@ -1048,7 +1056,7 @@ fn parse_seed_argument(args: &[String]) -> Option<u64> {
 fn print_help() {
     let styles = animation::styles::AnimationStyle::available_styles().join(", ");
     println!(
-    "neonfetch - fast colorful animated system info\n\nUsage:\n  neonfetch [options]\n\nOptions:\n  --style <name>        Animation style (default: neon; or 'random')\n  --speed <val>         Animation speed (0.1-20.0, default 1.0)\n  --color-fps <val>     Color refresh FPS (5-120, default 30)\n  --duration <sec>      Auto-exit after N seconds (animation mode)\n  --frame               Render one frame and exit (animation mode)\n  --fetch               Print info once and exit\n  --json                Print JSON array and exit\n  --mono                Render in grayscale (animations/info)\n  --no-color, -C        Disable ANSI colors (plain text)\n  --no-logo, -L         Hide ASCII logo\n  --no-packages, -P     Skip package manager detection\n  --no-header           Hide username@hostname header divider\n  --seed <u64>          Deterministic random seed for animations\n  --list-styles         List available styles\n  -h, --help            Show this help\n  -V, --version         Show version\n\nStyles:\n  {}",
+        "neonfetch - fast colorful animated system info\n\nUsage:\n  neonfetch [options]\n\nOptions:\n  --style <name>        Animation style (default: neon; or 'random')\n  --speed <val>         Animation speed (0.1-20.0, default 1.0)\n  --color-fps <val>     Color refresh FPS (5-120, default 30)\n  --duration <sec>      Auto-exit after N seconds (animation mode)\n  --frame               Render one frame and exit (animation mode)\n  --fetch               Print info once and exit\n  --json                Print JSON array and exit\n  --mono                Render in grayscale (animations/info)\n  --no-color, -C        Disable ANSI colors (plain text)\n  --no-logo, -L         Hide ASCII logo\n  --no-packages, -P     Skip package manager detection\n  --no-header           Hide username@hostname header divider\n  --seed <u64>          Deterministic random seed for animations\n  --list-styles         List available styles\n  -h, --help            Show this help\n  -V, --version         Show version\n\nStyles:\n  {}",
         styles
     );
 }
