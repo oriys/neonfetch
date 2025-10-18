@@ -105,6 +105,7 @@ neonfetch --list-styles
 | `typing`      | `t`, `type`      | Typewriter animation          |
 | `plasma`      | `ps`             | Plasma wave patterns          |
 | `glow`        | `g`              | Soft glow effect              |
+| `pixel`       | `px`             | Retro pixel color cycling     |
 | `aurora`      | `au`, `northern` | Aurora borealis               |
 | `glitch`      | `gl`             | Digital glitch effect         |
 | `pulse-rings` | `pr`, `rings`    | Expanding pulse rings         |
