@@ -12,6 +12,7 @@ pub enum AnimationStyle {
     Typing,
     Plasma,
     Glow,
+    Pixel,
     Aurora,
     Glitch,
     PulseRings,
@@ -35,6 +36,7 @@ impl AnimationStyle {
             "typing" | "type" | "t" => AnimationStyle::Typing,
             "plasma" | "ps" => AnimationStyle::Plasma,
             "glow" | "g" => AnimationStyle::Glow,
+            "pixel" | "px" => AnimationStyle::Pixel,
             "aurora" | "au" | "northern" => AnimationStyle::Aurora,
             "glitch" | "gl" => AnimationStyle::Glitch,
             "pulse-rings" | "pulserings" | "rings" | "pr" => AnimationStyle::PulseRings,
@@ -59,6 +61,7 @@ impl AnimationStyle {
             "typing",
             "plasma",
             "glow",
+            "pixel",
             "aurora",
             "glitch",
             "pulse-rings",
@@ -163,6 +166,43 @@ pub fn calculate_color(
             let v = (breath + noise).clamp(0.05, 1.0);
             let sat = 0.55 + (breath - 0.8) * 0.3; // saturate slightly at peaks
             hsv_to_rgb(base_hue, sat.clamp(0.3, 0.95), v)
+        }
+        AnimationStyle::Pixel => {
+            const PALETTE: [(u8, u8, u8); 8] = [
+                (0x1a, 0x1c, 0x2c),
+                (0x5d, 0x27, 0x5d),
+                (0xb1, 0x3e, 0x53),
+                (0xef, 0x7d, 0x57),
+                (0xff, 0xcd, 0x75),
+                (0xa7, 0xf0, 0x70),
+                (0x38, 0xb7, 0x64),
+                (0x2c, 0xd9, 0x58),
+            ];
+            let base = char_pos as f32 * 0.37 + time * 0.8;
+            let hashed = (base * 12.9898).sin() * 43758.5453;
+            let mut frac = hashed - hashed.floor();
+            if frac < 0.0 {
+                frac += 1.0;
+            }
+            let mut idx = (frac * PALETTE.len() as f32) as usize;
+            if idx >= PALETTE.len() {
+                idx = PALETTE.len() - 1;
+            }
+            let (pr, pg, pb) = PALETTE[idx];
+            let wobble = ((time * 2.7) + (char_pos as f32) * 0.45).sin() * 0.5 + 0.5;
+            let shade = 0.72 + wobble * 0.4;
+            let mut r = (pr as f32 * shade).clamp(0.0, 255.0) as u8;
+            let mut g = (pg as f32 * shade).clamp(0.0, 255.0) as u8;
+            let mut b = (pb as f32 * shade).clamp(0.0, 255.0) as u8;
+            let checker_seed =
+                ((char_pos as u32).wrapping_mul(1664525) ^ 0x9e3779b9 ^ (char_pos as u32 >> 3))
+                    & 0x1;
+            if checker_seed == 1 {
+                r = (r as f32 * 0.88).round().clamp(0.0, 255.0) as u8;
+                g = (g as f32 * 0.88).round().clamp(0.0, 255.0) as u8;
+                b = (b as f32 * 0.88).round().clamp(0.0, 255.0) as u8;
+            }
+            (r, g, b)
         }
         AnimationStyle::Matrix => (0, 255, 0), // Actual color generated in matrix::calculate_matrix_color_at
         AnimationStyle::Fire => (255, 80, 0), // Actual color generated in fire::calculate_fire_color_at

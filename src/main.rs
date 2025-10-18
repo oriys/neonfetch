@@ -945,6 +945,7 @@ fn pick_random_style() -> AnimationStyle {
         AS::Typing,
         AS::Plasma,
         AS::Glow,
+        AS::Pixel,
         AS::Aurora,
         AS::Glitch,
         AS::PulseRings,
