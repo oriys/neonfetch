@@ -5,16 +5,17 @@ use std::env;
 #[cfg(target_os = "linux")]
 use std::fs;
 use std::process::Command;
-use sysinfo::{Disks, System};
+use sysinfo::{CpuRefreshKind, Disks, MemoryRefreshKind, RefreshKind, System};
 
 pub fn generate_system_info(
     show_logo: bool,
     show_packages: bool,
     show_header: bool,
 ) -> Vec<String> {
-    let mut sys = System::new_all();
-    // Explicit refresh to ensure CPU list populated on some platforms
-    sys.refresh_all();
+    let sys_refreshes = RefreshKind::nothing()
+        .with_cpu(CpuRefreshKind::nothing().with_frequency())
+        .with_memory(MemoryRefreshKind::everything());
+    let sys = System::new_with_specifics(sys_refreshes);
 
     // Helper: host model
     fn detect_host_model() -> Option<String> {
@@ -53,49 +54,94 @@ pub fn generate_system_info(
         None
     }
 
-    // Helper: GPU info (first adapter)
-    fn detect_gpu_info() -> Option<String> {
-        #[cfg(target_os = "macos")]
-        {
-            use std::process::Command;
-            if let Ok(out) = Command::new("/usr/sbin/system_profiler")
-                .args(["SPDisplaysDataType", "-detailLevel", "mini"])
-                .output()
-                && out.status.success()
-                && let Ok(text) = String::from_utf8(out.stdout)
-            {
-                for line in text.lines() {
-                    let line_trim = line.trim();
-                    if line_trim.starts_with("Chipset Model:") {
-                        return Some(line_trim.replace("Chipset Model:", "").trim().to_string());
-                    }
-                    if line_trim.starts_with("Graphics:") {
-                        return Some(line_trim.replace("Graphics:", "").trim().to_string());
-                    }
+    #[cfg(target_os = "macos")]
+    fn detect_gpu_and_resolution() -> (Option<String>, Option<String>) {
+        let Ok(out) = Command::new("/usr/sbin/system_profiler")
+            .args(["SPDisplaysDataType", "-detailLevel", "mini"])
+            .output()
+        else {
+            return (None, None);
+        };
+        if !out.status.success() {
+            return (None, None);
+        }
+        let Ok(text) = String::from_utf8(out.stdout) else {
+            return (None, None);
+        };
+        let mut gpu_info: Option<String> = None;
+        let mut resolution: Option<String> = None;
+        for line in text.lines() {
+            let l = line.trim();
+            if gpu_info.is_none() {
+                if l.starts_with("Chipset Model:") {
+                    gpu_info = Some(l.replace("Chipset Model:", "").trim().to_string());
+                } else if l.starts_with("Graphics:") {
+                    gpu_info = Some(l.replace("Graphics:", "").trim().to_string());
                 }
             }
+            if resolution.is_none() && l.starts_with("Resolution:") {
+                resolution = Some(l.replace("Resolution:", "").trim().to_string());
+            }
+            if gpu_info.is_some() && resolution.is_some() {
+                break;
+            }
         }
-        #[cfg(target_os = "linux")]
-        {
-            use std::process::Command;
-            if let Ok(out) = Command::new("lspci").output()
-                && out.status.success()
-                && let Ok(text) = String::from_utf8(out.stdout)
-            {
-                for line in text.lines() {
-                    if line.to_ascii_lowercase().contains("vga")
-                        || line.to_ascii_lowercase().contains("3d controller")
-                    {
+        (gpu_info, resolution)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn detect_gpu_and_resolution() -> (Option<String>, Option<String>) {
+        let gpu_info = Command::new("lspci")
+            .output()
+            .ok()
+            .filter(|out| out.status.success())
+            .and_then(|out| String::from_utf8(out.stdout).ok())
+            .and_then(|text| {
+                text.lines().find_map(|line| {
+                    let lower = line.to_ascii_lowercase();
+                    if lower.contains("vga") || lower.contains("3d controller") {
                         if let Some(pos) = line.find(':') {
-                            return Some(line[pos + 1..].trim().to_string());
+                            Some(line[pos + 1..].trim().to_string())
                         } else {
-                            return Some(line.trim().to_string());
+                            Some(line.trim().to_string())
+                        }
+                    } else {
+                        None
+                    }
+                })
+            });
+
+        let resolution = Command::new("xrandr")
+            .arg("--query")
+            .output()
+            .ok()
+            .filter(|out| out.status.success())
+            .and_then(|out| String::from_utf8(out.stdout).ok())
+            .and_then(|text| {
+                text.lines().find_map(|line| {
+                    if line.contains(" connected primary") || line.contains(" connected ") {
+                        // pattern: eDP-1 connected primary 2560x1600+0+0 ...
+                        for part in line.split_whitespace() {
+                            if part.contains('x')
+                                && part
+                                    .chars()
+                                    .all(|c| c.is_ascii_digit() || c == 'x' || c == '+')
+                                && part.contains('+')
+                            {
+                                return Some(part.split('+').next().unwrap().to_string());
+                            }
                         }
                     }
-                }
-            }
-        }
-        None
+                    None
+                })
+            });
+
+        (gpu_info, resolution)
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    fn detect_gpu_and_resolution() -> (Option<String>, Option<String>) {
+        (None, None)
     }
 
     let ascii = if show_logo { Some(ascii_logo()) } else { None };
@@ -333,56 +379,12 @@ pub fn generate_system_info(
         info_lines.push("CPU: Unknown".to_string());
     }
 
-    let gpu_info = detect_gpu_info().unwrap_or_else(|| "Unknown".to_string());
-    info_lines.push(format!("GPU: {}", gpu_info));
-
-    // Resolution detection
-    fn detect_resolution() -> Option<String> {
-        #[cfg(target_os = "macos")]
-        {
-            use std::process::Command;
-            if let Ok(out) = Command::new("/usr/sbin/system_profiler")
-                .args(["SPDisplaysDataType", "-detailLevel", "mini"])
-                .output()
-                && out.status.success()
-                && let Ok(text) = String::from_utf8(out.stdout)
-            {
-                for line in text.lines() {
-                    let l = line.trim();
-                    if l.starts_with("Resolution:") {
-                        return Some(l.replace("Resolution:", "").trim().to_string());
-                    }
-                }
-            }
-        }
-        #[cfg(target_os = "linux")]
-        {
-            use std::process::Command;
-            if let Ok(out) = Command::new("xrandr").arg("--query").output()
-                && out.status.success()
-                && let Ok(text) = String::from_utf8(out.stdout)
-            {
-                for line in text.lines() {
-                    if line.contains(" connected primary") || line.contains(" connected ") {
-                        // pattern: eDP-1 connected primary 2560x1600+0+0 ...
-                        for part in line.split_whitespace() {
-                            if part.contains('x')
-                                && part
-                                    .chars()
-                                    .all(|c| c.is_ascii_digit() || c == 'x' || c == '+')
-                                && part.contains('+')
-                            {
-                                let res = part.split('+').next().unwrap();
-                                return Some(res.to_string());
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        None
-    }
-    if let Some(res) = detect_resolution() {
+    let (gpu_info, resolution) = detect_gpu_and_resolution();
+    info_lines.push(format!(
+        "GPU: {}",
+        gpu_info.unwrap_or_else(|| "Unknown".to_string())
+    ));
+    if let Some(res) = resolution {
         info_lines.push(format!("Resolution: {}", res));
     }
 

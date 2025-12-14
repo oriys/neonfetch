@@ -179,7 +179,7 @@ pub fn calculate_color(
                 (0x2c, 0xd9, 0x58),
             ];
             let base = char_pos as f32 * 0.37 + time * 0.8;
-            let hashed = (base * 12.9898).sin() * 43758.5453;
+            let hashed = (base * 12.9898).sin() * 43_758.547;
             let mut frac = hashed - hashed.floor();
             if frac < 0.0 {
                 frac += 1.0;
