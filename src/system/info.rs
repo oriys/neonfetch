@@ -26,14 +26,12 @@ pub fn generate_system_info(
                 .arg("-n")
                 .arg("hw.model")
                 .output()
+                && out.status.success()
+                && let Ok(s) = String::from_utf8(out.stdout)
             {
-                if out.status.success() {
-                    if let Ok(mut s) = String::from_utf8(out.stdout) {
-                        s = s.trim().to_string();
-                        if !s.is_empty() {
-                            return Some(s);
-                        }
-                    }
+                let s = s.trim();
+                if !s.is_empty() {
+                    return Some(s.to_string());
                 }
             }
         }
@@ -44,11 +42,11 @@ pub fn generate_system_info(
                 "/sys/devices/virtual/dmi/id/product_name",
                 "/sys/devices/virtual/dmi/id/board_name",
             ] {
-                if let Ok(s) = std::fs::read_to_string(path) {
-                    let v = s.trim();
-                    if !v.is_empty() && v != "To Be Filled By O.E.M." {
-                        return Some(v.to_string());
-                    }
+                if let Ok(s) = std::fs::read_to_string(path)
+                    && !s.trim().is_empty()
+                    && s.trim() != "To Be Filled By O.E.M."
+                {
+                    return Some(s.trim().to_string());
                 }
             }
         }
@@ -63,20 +61,16 @@ pub fn generate_system_info(
             if let Ok(out) = Command::new("/usr/sbin/system_profiler")
                 .args(["SPDisplaysDataType", "-detailLevel", "mini"])
                 .output()
+                && out.status.success()
+                && let Ok(text) = String::from_utf8(out.stdout)
             {
-                if out.status.success() {
-                    if let Ok(text) = String::from_utf8(out.stdout) {
-                        for line in text.lines() {
-                            let line_trim = line.trim();
-                            if line_trim.starts_with("Chipset Model:") {
-                                return Some(
-                                    line_trim.replace("Chipset Model:", "").trim().to_string(),
-                                );
-                            }
-                            if line_trim.starts_with("Graphics:") {
-                                return Some(line_trim.replace("Graphics:", "").trim().to_string());
-                            }
-                        }
+                for line in text.lines() {
+                    let line_trim = line.trim();
+                    if line_trim.starts_with("Chipset Model:") {
+                        return Some(line_trim.replace("Chipset Model:", "").trim().to_string());
+                    }
+                    if line_trim.starts_with("Graphics:") {
+                        return Some(line_trim.replace("Graphics:", "").trim().to_string());
                     }
                 }
             }
@@ -84,19 +78,18 @@ pub fn generate_system_info(
         #[cfg(target_os = "linux")]
         {
             use std::process::Command;
-            if let Ok(out) = Command::new("lspci").output() {
-                if out.status.success() {
-                    if let Ok(text) = String::from_utf8(out.stdout) {
-                        for line in text.lines() {
-                            if line.to_ascii_lowercase().contains("vga")
-                                || line.to_ascii_lowercase().contains("3d controller")
-                            {
-                                if let Some(pos) = line.find(':') {
-                                    return Some(line[pos + 1..].trim().to_string());
-                                } else {
-                                    return Some(line.trim().to_string());
-                                }
-                            }
+            if let Ok(out) = Command::new("lspci").output()
+                && out.status.success()
+                && let Ok(text) = String::from_utf8(out.stdout)
+            {
+                for line in text.lines() {
+                    if line.to_ascii_lowercase().contains("vga")
+                        || line.to_ascii_lowercase().contains("3d controller")
+                    {
+                        if let Some(pos) = line.find(':') {
+                            return Some(line[pos + 1..].trim().to_string());
+                        } else {
+                            return Some(line.trim().to_string());
                         }
                     }
                 }
@@ -149,7 +142,7 @@ pub fn generate_system_info(
     info_lines.push(format!("Uptime: {} hours, {} mins", hours, minutes));
 
     let shell = env::var("SHELL").unwrap_or_else(|_| "unknown".to_string());
-    let shell_name = shell.split('/').last().unwrap_or("unknown");
+    let shell_name = shell.split('/').next_back().unwrap_or("unknown");
     info_lines.push(format!("Shell: {}", shell_name));
 
     let terminal = env::var("TERM_PROGRAM")
@@ -173,7 +166,7 @@ pub fn generate_system_info(
             let freqs: Vec<u64> = sys
                 .cpus()
                 .iter()
-                .map(|c| c.frequency() as u64)
+                .map(|c| c.frequency())
                 .filter(|f| *f > 0)
                 .collect();
             if !freqs.is_empty() {
@@ -198,10 +191,9 @@ pub fn generate_system_info(
                         std::ptr::null_mut(),
                         0,
                     ) == 0
+                        && hz > 0
                     {
-                        if hz > 0 {
-                            return Some(hz as f64 / 1_000_000_000.0);
-                        }
+                        return Some(hz as f64 / 1_000_000_000.0);
                     }
                     let mut hz_max: u64 = 0;
                     size = std::mem::size_of::<u64>();
@@ -213,10 +205,9 @@ pub fn generate_system_info(
                         std::ptr::null_mut(),
                         0,
                     ) == 0
+                        && hz_max > 0
                     {
-                        if hz_max > 0 {
-                            return Some(hz_max as f64 / 1_000_000_000.0);
-                        }
+                        return Some(hz_max as f64 / 1_000_000_000.0);
                     }
                 }
                 // hw.cpufrequency gives Hz
@@ -224,58 +215,42 @@ pub fn generate_system_info(
                     .arg("-n")
                     .arg("hw.cpufrequency")
                     .output()
+                    && out.status.success()
+                    && let Ok(s) = String::from_utf8(out.stdout)
+                    && let Ok(hz) = s.trim().parse::<u64>()
+                    && hz > 0
                 {
-                    if out.status.success() {
-                        if let Ok(s) = String::from_utf8(out.stdout) {
-                            if let Ok(hz) = s.trim().parse::<u64>() {
-                                if hz > 0 {
-                                    return Some(hz as f64 / 1_000_000_000.0);
-                                }
-                            }
-                        }
-                    }
+                    return Some(hz as f64 / 1_000_000_000.0);
                 }
                 if let Ok(out) = Command::new("/usr/sbin/sysctl")
                     .arg("-n")
                     .arg("hw.cpufrequency_max")
                     .output()
+                    && out.status.success()
+                    && let Ok(s) = String::from_utf8(out.stdout)
+                    && let Ok(hz) = s.trim().parse::<u64>()
+                    && hz > 0
                 {
-                    if out.status.success() {
-                        if let Ok(s) = String::from_utf8(out.stdout) {
-                            if let Ok(hz) = s.trim().parse::<u64>() {
-                                if hz > 0 {
-                                    return Some(hz as f64 / 1_000_000_000.0);
-                                }
-                            }
-                        }
-                    }
+                    return Some(hz as f64 / 1_000_000_000.0);
                 }
                 // Fallback: path-less sysctl (in case /usr/sbin not resolved) and parsing lines
-                if let Ok(out) = Command::new("sysctl").arg("hw.cpufrequency").output() {
-                    if out.status.success() {
-                        if let Ok(s) = String::from_utf8(out.stdout) {
-                            if let Some(val) = s.split(':').nth(1) {
-                                if let Ok(hz) = val.trim().parse::<u64>() {
-                                    if hz > 0 {
-                                        return Some(hz as f64 / 1_000_000_000.0);
-                                    }
-                                }
-                            }
-                        }
-                    }
+                if let Ok(out) = Command::new("sysctl").arg("hw.cpufrequency").output()
+                    && out.status.success()
+                    && let Ok(s) = String::from_utf8(out.stdout)
+                    && let Some(val) = s.split(':').nth(1)
+                    && let Ok(hz) = val.trim().parse::<u64>()
+                    && hz > 0
+                {
+                    return Some(hz as f64 / 1_000_000_000.0);
                 }
-                if let Ok(out) = Command::new("sysctl").arg("hw.cpufrequency_max").output() {
-                    if out.status.success() {
-                        if let Ok(s) = String::from_utf8(out.stdout) {
-                            if let Some(val) = s.split(':').nth(1) {
-                                if let Ok(hz) = val.trim().parse::<u64>() {
-                                    if hz > 0 {
-                                        return Some(hz as f64 / 1_000_000_000.0);
-                                    }
-                                }
-                            }
-                        }
-                    }
+                if let Ok(out) = Command::new("sysctl").arg("hw.cpufrequency_max").output()
+                    && out.status.success()
+                    && let Ok(s) = String::from_utf8(out.stdout)
+                    && let Some(val) = s.split(':').nth(1)
+                    && let Ok(hz) = val.trim().parse::<u64>()
+                    && hz > 0
+                {
+                    return Some(hz as f64 / 1_000_000_000.0);
                 }
             }
             #[cfg(target_os = "linux")]
@@ -285,25 +260,22 @@ pub fn generate_system_info(
                     "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq",
                     "/sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq",
                 ] {
-                    if let Ok(s) = fs::read_to_string(path) {
-                        if let Ok(khz) = s.trim().parse::<u64>() {
-                            if khz > 0 {
-                                return Some(khz as f64 / 1_000_000.0);
-                            }
-                        }
+                    if let Ok(s) = fs::read_to_string(path)
+                        && let Ok(khz) = s.trim().parse::<u64>()
+                        && khz > 0
+                    {
+                        return Some(khz as f64 / 1_000_000.0);
                     }
                 }
                 // Fallback /proc/cpuinfo first 'cpu MHz'
                 if let Ok(content) = fs::read_to_string("/proc/cpuinfo") {
                     for line in content.lines() {
-                        if let Some(rest) = line.split(':').nth(1) {
-                            if line.to_ascii_lowercase().starts_with("cpu mhz") {
-                                if let Ok(mhz) = rest.trim().parse::<f64>() {
-                                    if mhz > 100.0 {
-                                        return Some(mhz / 1000.0);
-                                    }
-                                }
-                            }
+                        if line.to_ascii_lowercase().starts_with("cpu mhz")
+                            && let Some(rest) = line.split(':').nth(1)
+                            && let Ok(mhz) = rest.trim().parse::<f64>()
+                            && mhz > 100.0
+                        {
+                            return Some(mhz / 1000.0);
                         }
                     }
                 }
@@ -319,10 +291,9 @@ pub fn generate_system_info(
                     if let Ok(v) = num
                         .replace(|c: char| !c.is_ascii_digit() && c != '.', "")
                         .parse::<f64>()
+                        && v > 0.1
                     {
-                        if v > 0.1 {
-                            best = Some(best.map(|b| b.max(v)).unwrap_or(v));
-                        }
+                        best = Some(best.map(|b| b.max(v)).unwrap_or(v));
                     }
                 } else if let Some(pos) = token.find("mhz") {
                     // 3200mhz
@@ -330,11 +301,10 @@ pub fn generate_system_info(
                     if let Ok(v) = num
                         .replace(|c: char| !c.is_ascii_digit() && c != '.', "")
                         .parse::<f64>()
+                        && v > 100.0
                     {
-                        if v > 100.0 {
-                            let ghz = v / 1000.0;
-                            best = Some(best.map(|b| b.max(ghz)).unwrap_or(ghz));
-                        }
+                        let ghz = v / 1000.0;
+                        best = Some(best.map(|b| b.max(ghz)).unwrap_or(ghz));
                     }
                 }
             }
@@ -352,8 +322,8 @@ pub fn generate_system_info(
             freq_part
         ));
         // Add physical vs logical core detail if available
-        if let Some(phys) = sys.physical_core_count() {
-            if phys as usize != cpu_count {
+        if let Some(phys) = System::physical_core_count() {
+            if phys != cpu_count {
                 info_lines.push(format!("Cores: {} physical / {} logical", phys, cpu_count));
             }
         } else {
@@ -374,15 +344,13 @@ pub fn generate_system_info(
             if let Ok(out) = Command::new("/usr/sbin/system_profiler")
                 .args(["SPDisplaysDataType", "-detailLevel", "mini"])
                 .output()
+                && out.status.success()
+                && let Ok(text) = String::from_utf8(out.stdout)
             {
-                if out.status.success() {
-                    if let Ok(text) = String::from_utf8(out.stdout) {
-                        for line in text.lines() {
-                            let l = line.trim();
-                            if l.starts_with("Resolution:") {
-                                return Some(l.replace("Resolution:", "").trim().to_string());
-                            }
-                        }
+                for line in text.lines() {
+                    let l = line.trim();
+                    if l.starts_with("Resolution:") {
+                        return Some(l.replace("Resolution:", "").trim().to_string());
                     }
                 }
             }
@@ -390,23 +358,22 @@ pub fn generate_system_info(
         #[cfg(target_os = "linux")]
         {
             use std::process::Command;
-            if let Ok(out) = Command::new("xrandr").arg("--query").output() {
-                if out.status.success() {
-                    if let Ok(text) = String::from_utf8(out.stdout) {
-                        for line in text.lines() {
-                            if line.contains(" connected primary") || line.contains(" connected ") {
-                                // pattern: eDP-1 connected primary 2560x1600+0+0 ...
-                                for part in line.split_whitespace() {
-                                    if part.contains('x')
-                                        && part
-                                            .chars()
-                                            .all(|c| c.is_ascii_digit() || c == 'x' || c == '+')
-                                        && part.contains('+')
-                                    {
-                                        let res = part.split('+').next().unwrap();
-                                        return Some(res.to_string());
-                                    }
-                                }
+            if let Ok(out) = Command::new("xrandr").arg("--query").output()
+                && out.status.success()
+                && let Ok(text) = String::from_utf8(out.stdout)
+            {
+                for line in text.lines() {
+                    if line.contains(" connected primary") || line.contains(" connected ") {
+                        // pattern: eDP-1 connected primary 2560x1600+0+0 ...
+                        for part in line.split_whitespace() {
+                            if part.contains('x')
+                                && part
+                                    .chars()
+                                    .all(|c| c.is_ascii_digit() || c == 'x' || c == '+')
+                                && part.contains('+')
+                            {
+                                let res = part.split('+').next().unwrap();
+                                return Some(res.to_string());
                             }
                         }
                     }
@@ -424,36 +391,34 @@ pub fn generate_system_info(
         #[cfg(target_os = "macos")]
         {
             use std::process::Command;
-            if let Ok(out) = Command::new("pmset").args(["-g", "batt"]).output() {
-                if out.status.success() {
-                    if let Ok(text) = String::from_utf8(out.stdout) {
-                        for line in text.lines() {
-                            if line.contains('%') {
-                                if let Some(pct_part) = line.split('%').next() {
-                                    // Extract trailing digits
-                                    let mut digits = String::new();
-                                    for ch in pct_part.chars().rev() {
-                                        if ch.is_ascii_digit() {
-                                            digits.insert(0, ch);
-                                        } else if !digits.is_empty() {
-                                            break;
-                                        }
-                                    }
-                                    if !digits.is_empty() {
-                                        let status = if line.contains("discharging") {
-                                            "discharging"
-                                        } else if line.contains("charging") {
-                                            "charging"
-                                        } else if line.contains("charged") {
-                                            "charged"
-                                        } else {
-                                            ""
-                                        };
-                                        return Some(format!("{}% {}", digits, status));
-                                    }
-                                }
-                            }
+            if let Ok(out) = Command::new("pmset").args(["-g", "batt"]).output()
+                && out.status.success()
+                && let Ok(text) = String::from_utf8(out.stdout)
+            {
+                for line in text.lines() {
+                    let Some((pct_part, _)) = line.split_once('%') else {
+                        continue;
+                    };
+                    // Extract trailing digits
+                    let mut digits = String::new();
+                    for ch in pct_part.chars().rev() {
+                        if ch.is_ascii_digit() {
+                            digits.insert(0, ch);
+                        } else if !digits.is_empty() {
+                            break;
                         }
+                    }
+                    if !digits.is_empty() {
+                        let status = if line.contains("discharging") {
+                            "discharging"
+                        } else if line.contains("charging") {
+                            "charging"
+                        } else if line.contains("charged") {
+                            "charged"
+                        } else {
+                            ""
+                        };
+                        return Some(format!("{}% {}", digits, status));
                     }
                 }
             }
@@ -469,12 +434,11 @@ pub fn generate_system_info(
                         let base = e.path();
                         let cap = fs::read_to_string(base.join("capacity")).ok();
                         let stat = fs::read_to_string(base.join("status")).ok();
-                        if let Some(cap) = cap {
-                            let cap_trim = cap.trim();
-                            if !cap_trim.is_empty() {
-                                let s = stat.unwrap_or_default();
-                                return Some(format!("{}% {}", cap_trim, s.trim()));
-                            }
+                        if let Some(cap_trim) =
+                            cap.as_deref().map(str::trim).filter(|s| !s.is_empty())
+                        {
+                            let s = stat.unwrap_or_default();
+                            return Some(format!("{}% {}", cap_trim, s.trim()));
                         }
                     }
                 }
@@ -499,28 +463,20 @@ pub fn generate_system_info(
             ("flatpak", &["list"], "flatpak"),
         ];
         for (cmd, args, label) in candidates {
-            if let Ok(out) = Command::new(cmd).args(*args).output() {
-                if out.status.success() {
-                    if let Ok(text) = String::from_utf8(out.stdout) {
-                        let mut count = 0usize;
-                        for line in text.lines() {
-                            if !line.trim().is_empty() {
-                                count += 1;
-                            }
-                        }
-                        if count > 0 {
-                            return Some(format!("{} ({} pkgs)", label, count));
-                        }
-                    }
+            if let Ok(out) = Command::new(cmd).args(*args).output()
+                && out.status.success()
+                && let Ok(text) = String::from_utf8(out.stdout)
+            {
+                let count = text.lines().filter(|line| !line.trim().is_empty()).count();
+                if count > 0 {
+                    return Some(format!("{} ({} pkgs)", label, count));
                 }
             }
         }
         None
     }
-    if show_packages {
-        if let Some(pkgs) = detect_pkg_count() {
-            info_lines.push(format!("Packages: {}", pkgs));
-        }
+    if show_packages && let Some(pkgs) = detect_pkg_count() {
+        info_lines.push(format!("Packages: {}", pkgs));
     }
 
     // Temperature sensors (simple average / first) Linux only; macOS left N/A for now
@@ -532,15 +488,14 @@ pub fn generate_system_info(
             if let Ok(entries) = fs::read_dir("/sys/class/thermal") {
                 for e in entries.flatten() {
                     let p = e.path();
-                    if p.join("type").exists() && p.join("temp").exists() {
-                        if let Ok(t) = fs::read_to_string(p.join("temp")) {
-                            if let Ok(v) = t.trim().parse::<i64>() {
-                                // milliC
-                                if v > 0 {
-                                    temps.push(v as f64 / 1000.0);
-                                }
-                            }
-                        }
+                    if p.join("type").exists()
+                        && p.join("temp").exists()
+                        && let Ok(t) = fs::read_to_string(p.join("temp"))
+                        && let Ok(v) = t.trim().parse::<i64>()
+                        && v > 0
+                    {
+                        // milliC
+                        temps.push(v as f64 / 1000.0);
                     }
                 }
             }
@@ -551,12 +506,11 @@ pub fn generate_system_info(
                         let p = e.path();
                         for idx in 1..=5 {
                             let file = p.join(format!("temp{}{}_input", idx, "")); // build tempX_input
-                            if let Ok(t) = fs::read_to_string(&file) {
-                                if let Ok(v) = t.trim().parse::<i64>() {
-                                    if v > 0 {
-                                        temps.push(v as f64 / 1000.0);
-                                    }
-                                }
+                            if let Ok(t) = fs::read_to_string(&file)
+                                && let Ok(v) = t.trim().parse::<i64>()
+                                && v > 0
+                            {
+                                temps.push(v as f64 / 1000.0);
                             }
                         }
                     }

@@ -162,7 +162,7 @@ pub fn calculate_color(
             let breath = (time * 0.9).sin() * 0.20 + 0.80; // 0.60..1.00
             // Pseudo-random stable noise per char_pos
             let n = ((char_pos as u32).wrapping_mul(2654435761) ^ 0x9e3779b9) as f32;
-            let noise = ((n.sin() * 43758.5453).fract() - 0.5) * 0.08; // small +/-
+            let noise = ((n.sin() * 43_758.547).fract() - 0.5) * 0.08; // small +/-
             let v = (breath + noise).clamp(0.05, 1.0);
             let sat = 0.55 + (breath - 0.8) * 0.3; // saturate slightly at peaks
             hsv_to_rgb(base_hue, sat.clamp(0.3, 0.95), v)

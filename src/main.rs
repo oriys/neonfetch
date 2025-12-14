@@ -82,38 +82,40 @@ fn main() -> io::Result<()> {
     let color_fps = parse_color_fps_argument(&args);
     let duration = parse_duration_argument(&args);
     let sysinfo = generate_system_info(show_logo, show_packages, show_header);
-    show_animation_mode(
-        &sysinfo,
+    let options = AnimationOptions {
         speed,
         style,
         color_fps,
-        show_logo,
-        show_packages,
         duration,
         mono,
         no_color,
         max_frames,
-        show_header,
-    )
+    };
+    show_animation_mode(&sysinfo, options)
 }
 
-fn show_animation_mode(
-    _text: &[String],
+struct AnimationOptions {
     speed: f32,
     style: AnimationStyle,
     color_fps: f32,
-    show_logo: bool,
-    show_packages: bool,
     duration: Option<f32>,
     mono: bool,
     no_color: bool,
     max_frames: Option<usize>,
-    show_header: bool,
-) -> io::Result<()> {
+}
+
+fn show_animation_mode(lines: &[String], options: AnimationOptions) -> io::Result<()> {
+    let AnimationOptions {
+        speed,
+        style,
+        color_fps,
+        duration,
+        mono,
+        no_color,
+        max_frames,
+    } = options;
     let freq = 0.1f32;
     let spread = 3.0f32;
-    // Generate system info only once to avoid flicker from content changes.
-    let lines = generate_system_info(show_logo, show_packages, show_header);
     let parsed: Vec<Vec<(String, char)>> = lines.iter().map(|l| parse_ansi_text(l)).collect();
     // For Fall style we keep original layout; we'll build falling letters later from parsed grid.
     let start = Instant::now();
@@ -172,13 +174,11 @@ fn show_animation_mode(
     let mut frames_rendered: usize = 0;
     loop {
         let real_elapsed = start.elapsed().as_secs_f32();
-        if let Some(dur) = duration {
-            if real_elapsed >= dur {
-                // restore cursor and reset
-                print!("\x1b[?25h\x1b[0m\n");
-                stdout().flush()?;
-                return Ok(());
-            }
+        if duration.is_some_and(|dur| real_elapsed >= dur) {
+            // restore cursor and reset
+            println!("\x1b[?25h\x1b[0m");
+            stdout().flush()?;
+            return Ok(());
         }
         let elapsed = real_elapsed * speed.max(0.05);
         // Frame pacing for smooth continuous transitions
@@ -248,13 +248,12 @@ fn show_animation_mode(
                 fall_phase_start = elapsed;
             }
             // Phase transition trigger: start releasing when first release time reached
-            if fall_phase == FallPhase::Static {
-                if fall_letters
+            if fall_phase == FallPhase::Static
+                && fall_letters
                     .iter()
                     .any(|fl| elapsed >= fall_phase_start + fl.release)
-                {
-                    fall_phase = FallPhase::Falling;
-                }
+            {
+                fall_phase = FallPhase::Falling;
             }
             let gravity = 55.0 * speed.max(0.05);
             if fall_phase == FallPhase::Falling {
@@ -355,43 +354,34 @@ fn show_animation_mode(
                     fall_phase = FallPhase::Settled;
                     fall_phase_start = elapsed;
                 }
-            } else if fall_phase == FallPhase::Settled {
-                if elapsed - fall_phase_start > 4.0 {
-                    // restart cycle
-                    fall_pile.iter_mut().for_each(|v| v.clear());
-                    fall_letters.clear();
-                    fall_phase = FallPhase::Static;
-                    fall_phase_start = elapsed;
-                }
+            } else if fall_phase == FallPhase::Settled && elapsed - fall_phase_start > 4.0 {
+                // restart cycle
+                fall_pile.iter_mut().for_each(|v| v.clear());
+                fall_letters.clear();
+                fall_phase = FallPhase::Static;
+                fall_phase_start = elapsed;
             }
             // Precompute support-aware settled pile placement to avoid floating letters
             let mut settled_grid: Vec<Vec<Option<char>>> = vec![vec![None; term_w]; term_h];
             {
                 let bottom = term_h - 1;
                 // For each column, place bottom-up enforcing support
-                for col in 0..term_w {
-                    let stack = &fall_pile[col];
+                for (col, stack) in fall_pile.iter().enumerate() {
                     if stack.is_empty() {
                         continue;
                     }
                     let h = stack.len();
-                    for level in 0..h {
+                    for (level, su) in stack.iter().copied().enumerate() {
                         // level 0 = bottom
-                        let su = stack[level];
-                        let row = bottom - level; // target row
-                        if row >= term_h {
+                        let Some(row) = bottom.checked_sub(level) else {
                             continue;
-                        }
+                        };
                         let rel = level as f32 / h as f32; // 0 bottom -> 1 top
                         let max_shift = 1.3;
                         let raw_shift = su.tilt * rel * max_shift;
                         let mut step = raw_shift.abs().floor() * raw_shift.signum();
                         // Limit shift to 2 cells for stability
-                        if step > 2.0 {
-                            step = 2.0;
-                        } else if step < -2.0 {
-                            step = -2.0;
-                        }
+                        step = step.clamp(-2.0, 2.0);
                         let mut target_col =
                             (col as isize + step as isize).clamp(0, term_w as isize - 1);
                         // Enforce support: if not bottom level ensure cell directly below is occupied; otherwise reduce shift magnitude toward 0
@@ -432,7 +422,7 @@ fn show_animation_mode(
                 }
             }
             // Rendering
-            for row in 0..term_h.min(max_lines) {
+            for (row, pile_row) in settled_grid.iter().take(term_h.min(max_lines)).enumerate() {
                 frame_buf.push_str(&format!("\x1b[{};1H", row + 1));
                 // During Static phase we selectively keep letters not yet released.
                 // We'll render by constructing a per-cell char from (unreleased letters) / active falling / pile.
@@ -448,8 +438,6 @@ fn show_animation_mode(
                         active_map[cx] = Some(fl.ch);
                     }
                 }
-                // Use precomputed settled grid for this row
-                let pile_row: &Vec<Option<char>> = &settled_grid[row];
                 for col in 0..term_w {
                     let mut printed_char: char = pile_row[col].unwrap_or(' ');
                     let mut r = 0u8;
@@ -460,33 +448,30 @@ fn show_animation_mode(
                         g = 200;
                         b = 200;
                     }
-                    if fall_phase == FallPhase::Static {
-                        if printed_char == ' ' {
-                            if let Some(fl) = fall_letters
-                                .iter()
-                                .find(|fl| fl.orig_row == row && fl.orig_col == col)
-                            {
-                                if elapsed < fall_phase_start + fl.release {
-                                    printed_char = fl.ch;
-                                    r = 200;
-                                    g = 200;
-                                    b = 200;
-                                }
-                            }
-                        }
-                    } else if fall_phase == FallPhase::Falling {
-                        if printed_char == ' ' {
-                            if let Some(fl) = fall_letters.iter().find(|fl| {
-                                fl.orig_row == row
-                                    && fl.orig_col == col
-                                    && elapsed < fall_phase_start + fl.release
-                            }) {
-                                printed_char = fl.ch;
-                                r = 120;
-                                g = 120;
-                                b = 120;
-                            }
-                        }
+                    if printed_char == ' '
+                        && fall_phase == FallPhase::Static
+                        && let Some(fl) = fall_letters.iter().find(|fl| {
+                            fl.orig_row == row
+                                && fl.orig_col == col
+                                && elapsed < fall_phase_start + fl.release
+                        })
+                    {
+                        printed_char = fl.ch;
+                        r = 200;
+                        g = 200;
+                        b = 200;
+                    } else if printed_char == ' '
+                        && fall_phase == FallPhase::Falling
+                        && let Some(fl) = fall_letters.iter().find(|fl| {
+                            fl.orig_row == row
+                                && fl.orig_col == col
+                                && elapsed < fall_phase_start + fl.release
+                        })
+                    {
+                        printed_char = fl.ch;
+                        r = 120;
+                        g = 120;
+                        b = 120;
                     }
                     if let Some(ch) = &active_map[col] {
                         printed_char = *ch;
@@ -520,12 +505,12 @@ fn show_animation_mode(
             out.write_all(frame_buf.as_bytes())?;
             out.flush()?;
             frames_rendered += 1;
-            if let Some(limit) = max_frames {
-                if frames_rendered >= limit {
-                    print!("\x1b[?25h\x1b[0m\n");
-                    out.flush()?;
-                    return Ok(());
-                }
+            if let Some(limit) = max_frames
+                && frames_rendered >= limit
+            {
+                println!("\x1b[?25h\x1b[0m");
+                out.flush()?;
+                return Ok(());
             }
             prev_widths = new_widths;
             continue;
@@ -537,28 +522,26 @@ fn show_animation_mode(
             }
             // Remove finished
             sparks.retain(|s| s.age < s.life);
-            if style == AnimationStyle::Fire {
-                // Spawn new scattered embers (cap <10) with random rows (prefer upper hotter zone?)
-                if sparks.len() < 10 {
-                    let remaining = 10 - sparks.len();
-                    let spawn_prob = 0.25_f32 * remaining as f32 / 10.0; // up to 0.25 when empty
-                    if fastrand::f32() < spawn_prob {
-                        let sx = fastrand::usize(..(tw as usize).max(1));
-                        let h = th as usize;
-                        let r = fastrand::f32();
-                        let by = (r * r * h as f32).min(h.saturating_sub(1) as f32) as usize; // bias top
-                        let life = 0.18 + fastrand::f32() * 0.55; // short pop
-                        let peak = 0.25 + fastrand::f32() * 0.45; // peak time fraction
-                        let hue_jitter = fastrand::f32() * 80.0;
-                        sparks.push(Spark {
-                            x: sx,
-                            y: by,
-                            life,
-                            age: 0.0,
-                            peak,
-                            hue_jitter,
-                        });
-                    }
+            // Spawn new scattered embers (cap <10) with random rows (prefer upper hotter zone?)
+            if sparks.len() < 10 {
+                let remaining = 10 - sparks.len();
+                let spawn_prob = 0.25_f32 * remaining as f32 / 10.0; // up to 0.25 when empty
+                if fastrand::f32() < spawn_prob {
+                    let sx = fastrand::usize(..(tw as usize).max(1));
+                    let h = th as usize;
+                    let r = fastrand::f32();
+                    let by = (r * r * h as f32).min(h.saturating_sub(1) as f32) as usize; // bias top
+                    let life = 0.18 + fastrand::f32() * 0.55; // short pop
+                    let peak = 0.25 + fastrand::f32() * 0.45; // peak time fraction
+                    let hue_jitter = fastrand::f32() * 80.0;
+                    sparks.push(Spark {
+                        x: sx,
+                        y: by,
+                        life,
+                        age: 0.0,
+                        peak,
+                        hue_jitter,
+                    });
                 }
             }
         }
@@ -630,12 +613,12 @@ fn show_animation_mode(
             out.write_all(frame_buf.as_bytes())?;
             out.flush()?;
             frames_rendered += 1;
-            if let Some(limit) = max_frames {
-                if frames_rendered >= limit {
-                    print!("\x1b[?25h\x1b[0m\n");
-                    out.flush()?;
-                    return Ok(());
-                }
+            if let Some(limit) = max_frames
+                && frames_rendered >= limit
+            {
+                println!("\x1b[?25h\x1b[0m");
+                out.flush()?;
+                return Ok(());
             }
             prev_widths = new_widths;
             continue;
@@ -703,7 +686,7 @@ fn show_animation_mode(
                         std::mem::swap(&mut r, &mut g);
                     }
                     if fastrand::f32() < 0.06 {
-                        b = b.saturating_add(70).min(255);
+                        b = b.saturating_add(70);
                     }
                     // write spaces until dest_col
                     while printed < dest_col {
@@ -727,10 +710,10 @@ fn show_animation_mode(
                     printed += 1;
                 }
                 frame_buf.push_str("\x1b[0m");
-                if let Some(pw) = prev_widths.get(li) {
-                    if *pw > printed {
-                        frame_buf.push_str(&" ".repeat(pw - printed));
-                    }
+                if let Some(&pw) = prev_widths.get(li)
+                    && pw > printed
+                {
+                    frame_buf.push_str(&" ".repeat(pw - printed));
                 }
                 new_widths.push(printed);
             }
@@ -738,12 +721,12 @@ fn show_animation_mode(
             out.write_all(frame_buf.as_bytes())?;
             out.flush()?;
             frames_rendered += 1;
-            if let Some(limit) = max_frames {
-                if frames_rendered >= limit {
-                    print!("\x1b[?25h\x1b[0m\n");
-                    out.flush()?;
-                    return Ok(());
-                }
+            if let Some(limit) = max_frames
+                && frames_rendered >= limit
+            {
+                println!("\x1b[?25h\x1b[0m");
+                out.flush()?;
+                return Ok(());
             }
             prev_widths = new_widths;
             continue;
@@ -867,10 +850,10 @@ fn show_animation_mode(
                 char_idx += 1.0;
             }
             frame_buf.push_str("\x1b[0m");
-            if let Some(pw) = prev_widths.get(li) {
-                if *pw > printed {
-                    frame_buf.push_str(&" ".repeat(pw - printed));
-                }
+            if let Some(&pw) = prev_widths.get(li)
+                && pw > printed
+            {
+                frame_buf.push_str(&" ".repeat(pw - printed));
             }
             new_widths.push(printed);
             line_offset += char_idx / spread;
@@ -879,12 +862,12 @@ fn show_animation_mode(
         out.write_all(frame_buf.as_bytes())?;
         out.flush()?;
         frames_rendered += 1;
-        if let Some(limit) = max_frames {
-            if frames_rendered >= limit {
-                print!("\x1b[?25h\x1b[0m\n");
-                out.flush()?;
-                return Ok(());
-            }
+        if let Some(limit) = max_frames
+            && frames_rendered >= limit
+        {
+            println!("\x1b[?25h\x1b[0m");
+            out.flush()?;
+            return Ok(());
         }
         prev_widths = new_widths;
     }
@@ -892,16 +875,15 @@ fn show_animation_mode(
 
 fn parse_speed_argument(args: &[String]) -> (f32, bool) {
     for i in 0..args.len() {
-        if args[i] == "--speed" || args[i] == "-s" {
-            if i + 1 < args.len() {
-                if let Ok(v) = args[i + 1].parse::<f32>() {
-                    return (v.clamp(0.1, 20.0), true);
-                }
-            }
-        } else if let Some(rest) = args[i].strip_prefix("--speed=") {
-            if let Ok(v) = rest.parse::<f32>() {
-                return (v.clamp(0.1, 20.0), true);
-            }
+        if (args[i] == "--speed" || args[i] == "-s")
+            && i + 1 < args.len()
+            && let Ok(v) = args[i + 1].parse::<f32>()
+        {
+            return (v.clamp(0.1, 20.0), true);
+        } else if let Some(rest) = args[i].strip_prefix("--speed=")
+            && let Ok(v) = rest.parse::<f32>()
+        {
+            return (v.clamp(0.1, 20.0), true);
         }
     }
     (1.0, false)
@@ -959,16 +941,15 @@ fn pick_random_style() -> AnimationStyle {
 
 fn parse_color_fps_argument(args: &[String]) -> f32 {
     for i in 0..args.len() {
-        if args[i] == "--color-fps" {
-            if i + 1 < args.len() {
-                if let Ok(v) = args[i + 1].parse::<f32>() {
-                    return v.clamp(5.0, 120.0);
-                }
-            }
-        } else if let Some(rest) = args[i].strip_prefix("--color-fps=") {
-            if let Ok(v) = rest.parse::<f32>() {
-                return v.clamp(5.0, 120.0);
-            }
+        if args[i] == "--color-fps"
+            && i + 1 < args.len()
+            && let Ok(v) = args[i + 1].parse::<f32>()
+        {
+            return v.clamp(5.0, 120.0);
+        } else if let Some(rest) = args[i].strip_prefix("--color-fps=")
+            && let Ok(v) = rest.parse::<f32>()
+        {
+            return v.clamp(5.0, 120.0);
         }
     }
     30.0
@@ -1005,20 +986,17 @@ fn parse_frame_argument(args: &[String]) -> bool {
 
 fn parse_duration_argument(args: &[String]) -> Option<f32> {
     for i in 0..args.len() {
-        if args[i] == "--duration" {
-            if i + 1 < args.len() {
-                if let Ok(v) = args[i + 1].parse::<f32>() {
-                    if v > 0.0 {
-                        return Some(v);
-                    }
-                }
-            }
-        } else if let Some(rest) = args[i].strip_prefix("--duration=") {
-            if let Ok(v) = rest.parse::<f32>() {
-                if v > 0.0 {
-                    return Some(v);
-                }
-            }
+        if args[i] == "--duration"
+            && i + 1 < args.len()
+            && let Ok(v) = args[i + 1].parse::<f32>()
+            && v > 0.0
+        {
+            return Some(v);
+        } else if let Some(rest) = args[i].strip_prefix("--duration=")
+            && let Ok(v) = rest.parse::<f32>()
+            && v > 0.0
+        {
+            return Some(v);
         }
     }
     None
@@ -1039,16 +1017,15 @@ fn parse_no_header_argument(args: &[String]) -> bool {
 
 fn parse_seed_argument(args: &[String]) -> Option<u64> {
     for i in 0..args.len() {
-        if args[i] == "--seed" {
-            if i + 1 < args.len() {
-                if let Ok(v) = args[i + 1].parse::<u64>() {
-                    return Some(v);
-                }
-            }
-        } else if let Some(rest) = args[i].strip_prefix("--seed=") {
-            if let Ok(v) = rest.parse::<u64>() {
-                return Some(v);
-            }
+        if args[i] == "--seed"
+            && i + 1 < args.len()
+            && let Ok(v) = args[i + 1].parse::<u64>()
+        {
+            return Some(v);
+        } else if let Some(rest) = args[i].strip_prefix("--seed=")
+            && let Ok(v) = rest.parse::<u64>()
+        {
+            return Some(v);
         }
     }
     None

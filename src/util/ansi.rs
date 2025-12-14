@@ -9,10 +9,8 @@ pub fn parse_ansi_text(text: &str) -> Vec<(String, char)> {
     for cap in re.captures_iter(text) {
         if let Some(seq) = cap.get(1) {
             out.push((seq.as_str().to_string(), '\0'));
-        } else if let Some(ch) = cap.get(2) {
-            if let Some(c) = ch.as_str().chars().next() {
-                out.push((String::new(), c));
-            }
+        } else if let Some(c) = cap.get(2).and_then(|m| m.as_str().chars().next()) {
+            out.push((String::new(), c));
         }
     }
     out
