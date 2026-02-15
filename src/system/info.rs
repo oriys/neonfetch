@@ -5,144 +5,276 @@ use std::env;
 #[cfg(target_os = "linux")]
 use std::fs;
 use std::process::Command;
+use std::thread;
 use sysinfo::{CpuRefreshKind, Disks, MemoryRefreshKind, RefreshKind, System};
+
+fn detect_host_model() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+        if let Ok(out) = Command::new("/usr/sbin/sysctl")
+            .arg("-n")
+            .arg("hw.model")
+            .output()
+            && out.status.success()
+            && let Ok(s) = String::from_utf8(out.stdout)
+        {
+            let s = s.trim();
+            if !s.is_empty() {
+                return Some(s.to_string());
+            }
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        for path in [
+            "/sys/devices/virtual/dmi/id/product_name",
+            "/sys/devices/virtual/dmi/id/board_name",
+        ] {
+            if let Ok(s) = std::fs::read_to_string(path)
+                && !s.trim().is_empty()
+                && s.trim() != "To Be Filled By O.E.M."
+            {
+                return Some(s.trim().to_string());
+            }
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "macos")]
+fn detect_gpu_and_resolution() -> (Option<String>, Option<String>) {
+    let Ok(out) = Command::new("/usr/sbin/system_profiler")
+        .args(["SPDisplaysDataType", "-detailLevel", "mini"])
+        .output()
+    else {
+        return (None, None);
+    };
+    if !out.status.success() {
+        return (None, None);
+    }
+    let Ok(text) = String::from_utf8(out.stdout) else {
+        return (None, None);
+    };
+    let mut gpu_info: Option<String> = None;
+    let mut resolution: Option<String> = None;
+    for line in text.lines() {
+        let l = line.trim();
+        if gpu_info.is_none() {
+            if l.starts_with("Chipset Model:") {
+                gpu_info = Some(l.replace("Chipset Model:", "").trim().to_string());
+            } else if l.starts_with("Graphics:") {
+                gpu_info = Some(l.replace("Graphics:", "").trim().to_string());
+            }
+        }
+        if resolution.is_none() && l.starts_with("Resolution:") {
+            resolution = Some(l.replace("Resolution:", "").trim().to_string());
+        }
+        if gpu_info.is_some() && resolution.is_some() {
+            break;
+        }
+    }
+    (gpu_info, resolution)
+}
+
+#[cfg(target_os = "linux")]
+fn detect_gpu_and_resolution() -> (Option<String>, Option<String>) {
+    let gpu_info = Command::new("lspci")
+        .output()
+        .ok()
+        .filter(|out| out.status.success())
+        .and_then(|out| String::from_utf8(out.stdout).ok())
+        .and_then(|text| {
+            text.lines().find_map(|line| {
+                let lower = line.to_ascii_lowercase();
+                if lower.contains("vga") || lower.contains("3d controller") {
+                    if let Some(pos) = line.find(':') {
+                        Some(line[pos + 1..].trim().to_string())
+                    } else {
+                        Some(line.trim().to_string())
+                    }
+                } else {
+                    None
+                }
+            })
+        });
+
+    let resolution = Command::new("xrandr")
+        .arg("--query")
+        .output()
+        .ok()
+        .filter(|out| out.status.success())
+        .and_then(|out| String::from_utf8(out.stdout).ok())
+        .and_then(|text| {
+            text.lines().find_map(|line| {
+                if line.contains(" connected primary") || line.contains(" connected ") {
+                    for part in line.split_whitespace() {
+                        if part.contains('x')
+                            && part
+                                .chars()
+                                .all(|c| c.is_ascii_digit() || c == 'x' || c == '+')
+                            && part.contains('+')
+                        {
+                            return Some(part.split('+').next().unwrap().to_string());
+                        }
+                    }
+                }
+                None
+            })
+        });
+
+    (gpu_info, resolution)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn detect_gpu_and_resolution() -> (Option<String>, Option<String>) {
+    (None, None)
+}
+
+fn detect_battery() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+        if let Ok(out) = Command::new("pmset").args(["-g", "batt"]).output()
+            && out.status.success()
+            && let Ok(text) = String::from_utf8(out.stdout)
+        {
+            for line in text.lines() {
+                let Some((pct_part, _)) = line.split_once('%') else {
+                    continue;
+                };
+                let mut digits = String::new();
+                for ch in pct_part.chars().rev() {
+                    if ch.is_ascii_digit() {
+                        digits.insert(0, ch);
+                    } else if !digits.is_empty() {
+                        break;
+                    }
+                }
+                if !digits.is_empty() {
+                    let status = if line.contains("discharging") {
+                        "discharging"
+                    } else if line.contains("charging") {
+                        "charging"
+                    } else if line.contains("charged") {
+                        "charged"
+                    } else {
+                        ""
+                    };
+                    return Some(format!("{}% {}", digits, status));
+                }
+            }
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        use std::fs;
+        if let Ok(entries) = std::fs::read_dir("/sys/class/power_supply") {
+            for e in entries.flatten() {
+                let name = e.file_name().to_string_lossy().into_owned();
+                if name.starts_with("BAT") || name.to_ascii_lowercase().contains("battery") {
+                    let base = e.path();
+                    let cap = fs::read_to_string(base.join("capacity")).ok();
+                    let stat = fs::read_to_string(base.join("status")).ok();
+                    if let Some(cap_trim) = cap.as_deref().map(str::trim).filter(|s| !s.is_empty())
+                    {
+                        let s = stat.unwrap_or_default();
+                        return Some(format!("{}% {}", cap_trim, s.trim()));
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn detect_pkg_count() -> Option<String> {
+    use std::process::Command;
+    let candidates: &[(&str, &[&str], &str)] = &[
+        ("brew", &["list"], "brew"),
+        ("pacman", &["-Q"], "pacman"),
+        ("dpkg-query", &["-f", "${binary:Package}\n", "-W"], "dpkg"),
+        ("apt", &["list", "--installed"], "apt"),
+        ("rpm", &["-qa"], "rpm"),
+        ("flatpak", &["list"], "flatpak"),
+    ];
+    for (cmd, args, label) in candidates {
+        if let Ok(out) = Command::new(cmd).args(*args).output()
+            && out.status.success()
+            && let Ok(text) = String::from_utf8(out.stdout)
+        {
+            let count = text.lines().filter(|line| !line.trim().is_empty()).count();
+            if count > 0 {
+                return Some(format!("{} ({} pkgs)", label, count));
+            }
+        }
+    }
+    None
+}
+
+fn detect_temperature() -> Option<String> {
+    #[cfg(target_os = "linux")]
+    {
+        use std::fs;
+        let mut temps = Vec::new();
+        if let Ok(entries) = fs::read_dir("/sys/class/thermal") {
+            for e in entries.flatten() {
+                let p = e.path();
+                if p.join("type").exists()
+                    && p.join("temp").exists()
+                    && let Ok(t) = fs::read_to_string(p.join("temp"))
+                    && let Ok(v) = t.trim().parse::<i64>()
+                    && v > 0
+                {
+                    temps.push(v as f64 / 1000.0);
+                }
+            }
+        }
+        if temps.is_empty()
+            && let Ok(entries) = fs::read_dir("/sys/class/hwmon")
+        {
+            for e in entries.flatten() {
+                let p = e.path();
+                for idx in 1..=5 {
+                    let file = p.join(format!("temp{}{}_input", idx, ""));
+                    if let Ok(t) = fs::read_to_string(&file)
+                        && let Ok(v) = t.trim().parse::<i64>()
+                        && v > 0
+                    {
+                        temps.push(v as f64 / 1000.0);
+                    }
+                }
+            }
+        }
+        if !temps.is_empty() {
+            let avg = temps.iter().sum::<f64>() / temps.len() as f64;
+            return Some(format!("{:.1}°C", avg));
+        }
+    }
+    None
+}
 
 pub fn generate_system_info(
     show_logo: bool,
     show_packages: bool,
     show_header: bool,
 ) -> Vec<String> {
+    // Spawn background threads for slow external-command probes so they
+    // run concurrently with the sysinfo initialization and fast probes.
+    let host_handle = thread::spawn(detect_host_model);
+    let gpu_handle = thread::spawn(detect_gpu_and_resolution);
+    let battery_handle = thread::spawn(detect_battery);
+    let pkg_handle = if show_packages {
+        Some(thread::spawn(detect_pkg_count))
+    } else {
+        None
+    };
+    let temp_handle = thread::spawn(detect_temperature);
+
     let sys_refreshes = RefreshKind::nothing()
         .with_cpu(CpuRefreshKind::nothing().with_frequency())
         .with_memory(MemoryRefreshKind::everything());
     let sys = System::new_with_specifics(sys_refreshes);
-
-    // Helper: host model
-    fn detect_host_model() -> Option<String> {
-        #[cfg(target_os = "macos")]
-        {
-            // hw.model (e.g. Mac14,12) then try system_profiler for friendly name
-            use std::process::Command;
-            if let Ok(out) = Command::new("/usr/sbin/sysctl")
-                .arg("-n")
-                .arg("hw.model")
-                .output()
-                && out.status.success()
-                && let Ok(s) = String::from_utf8(out.stdout)
-            {
-                let s = s.trim();
-                if !s.is_empty() {
-                    return Some(s.to_string());
-                }
-            }
-        }
-        #[cfg(target_os = "linux")]
-        {
-            // DMI product name
-            for path in [
-                "/sys/devices/virtual/dmi/id/product_name",
-                "/sys/devices/virtual/dmi/id/board_name",
-            ] {
-                if let Ok(s) = std::fs::read_to_string(path)
-                    && !s.trim().is_empty()
-                    && s.trim() != "To Be Filled By O.E.M."
-                {
-                    return Some(s.trim().to_string());
-                }
-            }
-        }
-        None
-    }
-
-    #[cfg(target_os = "macos")]
-    fn detect_gpu_and_resolution() -> (Option<String>, Option<String>) {
-        let Ok(out) = Command::new("/usr/sbin/system_profiler")
-            .args(["SPDisplaysDataType", "-detailLevel", "mini"])
-            .output()
-        else {
-            return (None, None);
-        };
-        if !out.status.success() {
-            return (None, None);
-        }
-        let Ok(text) = String::from_utf8(out.stdout) else {
-            return (None, None);
-        };
-        let mut gpu_info: Option<String> = None;
-        let mut resolution: Option<String> = None;
-        for line in text.lines() {
-            let l = line.trim();
-            if gpu_info.is_none() {
-                if l.starts_with("Chipset Model:") {
-                    gpu_info = Some(l.replace("Chipset Model:", "").trim().to_string());
-                } else if l.starts_with("Graphics:") {
-                    gpu_info = Some(l.replace("Graphics:", "").trim().to_string());
-                }
-            }
-            if resolution.is_none() && l.starts_with("Resolution:") {
-                resolution = Some(l.replace("Resolution:", "").trim().to_string());
-            }
-            if gpu_info.is_some() && resolution.is_some() {
-                break;
-            }
-        }
-        (gpu_info, resolution)
-    }
-
-    #[cfg(target_os = "linux")]
-    fn detect_gpu_and_resolution() -> (Option<String>, Option<String>) {
-        let gpu_info = Command::new("lspci")
-            .output()
-            .ok()
-            .filter(|out| out.status.success())
-            .and_then(|out| String::from_utf8(out.stdout).ok())
-            .and_then(|text| {
-                text.lines().find_map(|line| {
-                    let lower = line.to_ascii_lowercase();
-                    if lower.contains("vga") || lower.contains("3d controller") {
-                        if let Some(pos) = line.find(':') {
-                            Some(line[pos + 1..].trim().to_string())
-                        } else {
-                            Some(line.trim().to_string())
-                        }
-                    } else {
-                        None
-                    }
-                })
-            });
-
-        let resolution = Command::new("xrandr")
-            .arg("--query")
-            .output()
-            .ok()
-            .filter(|out| out.status.success())
-            .and_then(|out| String::from_utf8(out.stdout).ok())
-            .and_then(|text| {
-                text.lines().find_map(|line| {
-                    if line.contains(" connected primary") || line.contains(" connected ") {
-                        // pattern: eDP-1 connected primary 2560x1600+0+0 ...
-                        for part in line.split_whitespace() {
-                            if part.contains('x')
-                                && part
-                                    .chars()
-                                    .all(|c| c.is_ascii_digit() || c == 'x' || c == '+')
-                                && part.contains('+')
-                            {
-                                return Some(part.split('+').next().unwrap().to_string());
-                            }
-                        }
-                    }
-                    None
-                })
-            });
-
-        (gpu_info, resolution)
-    }
-
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    fn detect_gpu_and_resolution() -> (Option<String>, Option<String>) {
-        (None, None)
-    }
 
     let ascii = if show_logo { Some(ascii_logo()) } else { None };
     let info: Vec<String> = match ascii {
@@ -175,7 +307,11 @@ pub fn generate_system_info(
         info_lines.push("OS: Unknown".to_string());
     }
 
-    let host_line = detect_host_model().unwrap_or_else(|| "Unknown".to_string());
+    let host_line = host_handle
+        .join()
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| "Unknown".to_string());
     info_lines.push(format!("Host: {}", host_line));
 
     if let Some(kernel_version) = System::kernel_version() {
@@ -379,7 +515,7 @@ pub fn generate_system_info(
         info_lines.push("CPU: Unknown".to_string());
     }
 
-    let (gpu_info, resolution) = detect_gpu_and_resolution();
+    let (gpu_info, resolution) = gpu_handle.join().ok().unwrap_or((None, None));
     info_lines.push(format!(
         "GPU: {}",
         gpu_info.unwrap_or_else(|| "Unknown".to_string())
@@ -388,144 +524,15 @@ pub fn generate_system_info(
         info_lines.push(format!("Resolution: {}", res));
     }
 
-    // Battery detection
-    fn detect_battery() -> Option<String> {
-        #[cfg(target_os = "macos")]
-        {
-            use std::process::Command;
-            if let Ok(out) = Command::new("pmset").args(["-g", "batt"]).output()
-                && out.status.success()
-                && let Ok(text) = String::from_utf8(out.stdout)
-            {
-                for line in text.lines() {
-                    let Some((pct_part, _)) = line.split_once('%') else {
-                        continue;
-                    };
-                    // Extract trailing digits
-                    let mut digits = String::new();
-                    for ch in pct_part.chars().rev() {
-                        if ch.is_ascii_digit() {
-                            digits.insert(0, ch);
-                        } else if !digits.is_empty() {
-                            break;
-                        }
-                    }
-                    if !digits.is_empty() {
-                        let status = if line.contains("discharging") {
-                            "discharging"
-                        } else if line.contains("charging") {
-                            "charging"
-                        } else if line.contains("charged") {
-                            "charged"
-                        } else {
-                            ""
-                        };
-                        return Some(format!("{}% {}", digits, status));
-                    }
-                }
-            }
-        }
-        #[cfg(target_os = "linux")]
-        {
-            use std::fs;
-            // Look for BAT* directories
-            if let Ok(entries) = std::fs::read_dir("/sys/class/power_supply") {
-                for e in entries.flatten() {
-                    let name = e.file_name().to_string_lossy().into_owned();
-                    if name.starts_with("BAT") || name.to_ascii_lowercase().contains("battery") {
-                        let base = e.path();
-                        let cap = fs::read_to_string(base.join("capacity")).ok();
-                        let stat = fs::read_to_string(base.join("status")).ok();
-                        if let Some(cap_trim) =
-                            cap.as_deref().map(str::trim).filter(|s| !s.is_empty())
-                        {
-                            let s = stat.unwrap_or_default();
-                            return Some(format!("{}% {}", cap_trim, s.trim()));
-                        }
-                    }
-                }
-            }
-        }
-        None
-    }
-    if let Some(batt) = detect_battery() {
+    if let Some(batt) = battery_handle.join().ok().flatten() {
         info_lines.push(format!("Battery: {}", batt));
     }
 
-    // Package manager installed count
-    fn detect_pkg_count() -> Option<String> {
-        use std::process::Command;
-        // (cmd, args, name, parse_fn)
-        let candidates: &[(&str, &[&str], &str)] = &[
-            ("brew", &["list"], "brew"),
-            ("pacman", &["-Q"], "pacman"),
-            ("dpkg-query", &["-f", "${binary:Package}\n", "-W"], "dpkg"),
-            ("apt", &["list", "--installed"], "apt"),
-            ("rpm", &["-qa"], "rpm"),
-            ("flatpak", &["list"], "flatpak"),
-        ];
-        for (cmd, args, label) in candidates {
-            if let Ok(out) = Command::new(cmd).args(*args).output()
-                && out.status.success()
-                && let Ok(text) = String::from_utf8(out.stdout)
-            {
-                let count = text.lines().filter(|line| !line.trim().is_empty()).count();
-                if count > 0 {
-                    return Some(format!("{} ({} pkgs)", label, count));
-                }
-            }
-        }
-        None
-    }
-    if show_packages && let Some(pkgs) = detect_pkg_count() {
+    if let Some(pkgs) = pkg_handle.and_then(|h| h.join().ok()).flatten() {
         info_lines.push(format!("Packages: {}", pkgs));
     }
 
-    // Temperature sensors (simple average / first) Linux only; macOS left N/A for now
-    fn detect_temperature() -> Option<String> {
-        #[cfg(target_os = "linux")]
-        {
-            use std::fs;
-            let mut temps = Vec::new();
-            if let Ok(entries) = fs::read_dir("/sys/class/thermal") {
-                for e in entries.flatten() {
-                    let p = e.path();
-                    if p.join("type").exists()
-                        && p.join("temp").exists()
-                        && let Ok(t) = fs::read_to_string(p.join("temp"))
-                        && let Ok(v) = t.trim().parse::<i64>()
-                        && v > 0
-                    {
-                        // milliC
-                        temps.push(v as f64 / 1000.0);
-                    }
-                }
-            }
-            if temps.is_empty() {
-                // Try hwmon
-                if let Ok(entries) = fs::read_dir("/sys/class/hwmon") {
-                    for e in entries.flatten() {
-                        let p = e.path();
-                        for idx in 1..=5 {
-                            let file = p.join(format!("temp{}{}_input", idx, "")); // build tempX_input
-                            if let Ok(t) = fs::read_to_string(&file)
-                                && let Ok(v) = t.trim().parse::<i64>()
-                                && v > 0
-                            {
-                                temps.push(v as f64 / 1000.0);
-                            }
-                        }
-                    }
-                }
-            }
-            if !temps.is_empty() {
-                let avg = temps.iter().sum::<f64>() / temps.len() as f64;
-                return Some(format!("{:.1}°C", avg));
-            }
-        }
-        None
-    }
-    if let Some(temp) = detect_temperature() {
+    if let Some(temp) = temp_handle.join().ok().flatten() {
         info_lines.push(format!("Temp: {}", temp));
     }
 

@@ -2,10 +2,10 @@ use std::fs;
 
 // Detect Linux distribution via /etc/os-release (ID=) or env override NEONFETCH_FORCE_DISTRO
 fn detect_distro_id() -> Option<String> {
-    if let Ok(val) = std::env::var("NEONFETCH_FORCE_DISTRO") {
-        if !val.trim().is_empty() {
-            return Some(val.to_ascii_lowercase());
-        }
+    if let Ok(val) = std::env::var("NEONFETCH_FORCE_DISTRO")
+        && !val.trim().is_empty()
+    {
+        return Some(val.to_ascii_lowercase());
     }
     if let Ok(content) = fs::read_to_string("/etc/os-release") {
         for line in content.lines() {
