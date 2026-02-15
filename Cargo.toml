@@ -10,8 +10,6 @@ readme = "README.md"
 
 [dependencies]
 crossterm = "0.29.0"
-atty = "0.2.14"
-regex = "1.12.2"
 sysinfo = "0.37.2"
 fastrand = "2.3.0"
 get_if_addrs = "0.5.3"

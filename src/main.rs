@@ -12,7 +12,7 @@ use system::generate_system_info;
 use crossterm::terminal::size;
 use std::{
     env,
-    io::{self, Write, stdout},
+    io::{self, IsTerminal, Write, stdout},
     thread,
     time::{Duration, Instant},
 };
@@ -50,7 +50,7 @@ fn main() -> io::Result<()> {
         fastrand::seed(seed);
     }
     // Auto fallback to one-shot in non-TTY pipelines
-    let is_tty = atty::is(atty::Stream::Stdout);
+    let is_tty = stdout().is_terminal();
     if !is_tty && !parse_json_argument(&args) {
         let lines = generate_system_info(show_logo, show_packages, show_header);
         for line in lines {
