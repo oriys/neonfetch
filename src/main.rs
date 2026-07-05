@@ -65,6 +65,7 @@ fn main() -> io::Result<()> {
     };
     let show_header = !parse_no_header_argument(&args);
     let seed = parse_seed_argument(&args);
+    let distro_id = parse_distro_argument(&args);
     if let Some(seed) = seed {
         fastrand::seed(seed);
     }
@@ -76,6 +77,7 @@ fn main() -> io::Result<()> {
             show_packages,
             show_header,
             logo_override.as_deref(),
+            distro_id.as_deref(),
         );
         for line in lines {
             println!("{}", line);
@@ -88,6 +90,7 @@ fn main() -> io::Result<()> {
             show_packages,
             show_header,
             logo_override.as_deref(),
+            distro_id.as_deref(),
         );
         let json = serde_json::to_string(&lines).unwrap_or_else(|_| "[]".to_string());
         println!("{}", json);
@@ -100,6 +103,7 @@ fn main() -> io::Result<()> {
             show_packages,
             show_header,
             logo_override.as_deref(),
+            distro_id.as_deref(),
         );
         let mut out = stdout();
         for line in lines {
@@ -120,6 +124,7 @@ fn main() -> io::Result<()> {
         show_packages,
         show_header,
         logo_override.as_deref(),
+        distro_id.as_deref(),
     );
     let options = AnimationOptions {
         speed,
@@ -852,6 +857,25 @@ fn parse_logo_file_argument(args: &[String]) -> Option<String> {
     None
 }
 
+fn parse_distro_argument(args: &[String]) -> Option<String> {
+    for i in 0..args.len() {
+        if args[i] == "--distro" {
+            if i + 1 < args.len() {
+                let value = args[i + 1].trim();
+                if !value.is_empty() {
+                    return Some(value.to_ascii_lowercase());
+                }
+            }
+        } else if let Some(rest) = args[i].strip_prefix("--distro=") {
+            let value = rest.trim();
+            if !value.is_empty() {
+                return Some(value.to_ascii_lowercase());
+            }
+        }
+    }
+    None
+}
+
 fn parse_seed_argument(args: &[String]) -> Option<u64> {
     for i in 0..args.len() {
         if args[i] == "--seed"
@@ -902,9 +926,10 @@ fn print_help() {
     style_names.push("random");
     style_names.push("daily");
     let styles = style_names.join(", ");
+    let distros = system::supported_distro_ids().join(", ");
     println!(
-        "neonfetch - fast colorful animated system info\n\nUsage:\n  neonfetch [options]\n\nOptions:\n  --style <name>        Animation style (default: neon; real style, random, or daily)\n  --speed <val>         Animation speed (0.1-20.0, default 1.0)\n  --color-fps <val>     Color refresh FPS (5-120, default 30)\n  --duration <sec>      Auto-exit after N seconds (animation mode)\n  --frame               Render one frame and exit (animation mode)\n  --fetch               Print info once and exit\n  --json                Print JSON array and exit\n  --mono                Render in grayscale (animations/info)\n  --no-color, -C        Disable ANSI colors (plain text)\n  --logo-file <path>    Use a UTF-8 text file as the ASCII logo\n  --no-logo, -L         Hide ASCII logo\n  --no-packages, -P     Skip package manager detection\n  --no-header           Hide username@hostname header divider\n  --seed <u64>          Deterministic random seed for animations and --style random\n  --list-styles         List available styles\n  -h, --help            Show this help\n  -V, --version         Show version\n\nKeys (animation mode):\n  q / Esc / Ctrl+C      Quit and restore the terminal\n\nStyles:\n  {}\n\nPseudo-styles:\n  random                Pick a random real style each run; honors --seed\n  daily                 Pick one real style from the local date",
-        styles
+        "neonfetch - fast colorful animated system info\n\nUsage:\n  neonfetch [options]\n\nOptions:\n  --style <name>        Animation style (default: neon; real style, random, or daily)\n  --speed <val>         Animation speed (0.1-20.0, default 1.0)\n  --color-fps <val>     Color refresh FPS (5-120, default 30)\n  --duration <sec>      Auto-exit after N seconds (animation mode)\n  --frame               Render one frame and exit (animation mode)\n  --fetch               Print info once and exit\n  --json                Print JSON array and exit\n  --mono                Render in grayscale (animations/info)\n  --no-color, -C        Disable ANSI colors (plain text)\n  --logo-file <path>    Use a UTF-8 text file as the ASCII logo\n  --no-logo, -L         Hide ASCII logo\n  --distro <id>         Force a distro logo on any platform\n  --no-packages, -P     Skip package manager detection\n  --no-header           Hide username@hostname header divider\n  --seed <u64>          Deterministic random seed for animations and --style random\n  --list-styles         List available styles\n  -h, --help            Show this help\n  -V, --version         Show version\n\nKeys (animation mode):\n  q / Esc / Ctrl+C      Quit and restore the terminal\n\nDistros:\n  {}\n\nStyles:\n  {}\n\nPseudo-styles:\n  random                Pick a random real style each run; honors --seed\n  daily                 Pick one real style from the local date",
+        distros, styles
     );
 }
 
