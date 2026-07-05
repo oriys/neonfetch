@@ -7,7 +7,8 @@ multiple visual styles.
 
 ## Features
 
-- **16 Animation Styles**: Choose from various eye-catching visual effects
+- **17 Animation Styles**: Choose from various eye-catching visual effects
+- **Theme Palettes**: Recolor any animation with built-in palettes
 - **Real-time System Info**: CPU, memory, disk, GPU, network, and more
 - **Cross-platform**: Works on macOS and Linux
 - **Customizable Speed**: Adjust animation speed to your preference
@@ -65,7 +66,7 @@ on panics.
 
 ### Animation Styles
 
-Choose from 16 different animation styles:
+Choose from 17 different animation styles:
 
 ```bash
 # Neon glow effect (default)
@@ -117,12 +118,48 @@ neonfetch --list-styles
 | `lava`        | `lv`             | Lava flow effect              |
 | `edge-glow`   | `eg`             | Edge highlighting             |
 
+### Color Palettes
+
+Keep the animation motion you like and switch its color theme with
+`--palette <name>`. The `default` palette preserves each style's original
+colors.
+
+```bash
+# Dracula colors on the wave animation
+neonfetch --style wave --palette dracula
+
+# Pastel matrix rain
+neonfetch --style matrix --palette pastel
+
+# Monochrome lava motion
+neonfetch --style lava --palette mono
+
+# List all available palettes
+neonfetch --list-palettes
+```
+
+#### Available Palettes
+
+| Palette     | Description                          |
+| ----------- | ------------------------------------ |
+| `default`   | Original per-style colors            |
+| `cyberpunk` | Neon cyan, magenta, yellow, and blue |
+| `dracula`   | Dracula-inspired terminal colors     |
+| `pastel`    | Soft low-contrast candy colors       |
+| `sunset`    | Purple, red, orange, and gold        |
+| `ocean`     | Deep blue through bright aqua        |
+| `mono`      | White and gray monochrome            |
+
 ### Command Line Options
 
 ```bash
 # Set animation speed (0.1 - 20.0, default: 1.0)
 neonfetch --speed 2.0
 neonfetch -s 0.5
+
+# Recolor any animation style
+neonfetch --style wave --palette dracula
+neonfetch --style fire --palette ocean
 
 # Set color refresh rate (5.0 - 120.0 FPS, default: 30.0)
 neonfetch --color-fps 60
@@ -156,7 +193,7 @@ neonfetch --no-header
 neonfetch --seed 42
 
 # Combine options
-neonfetch --style fire --speed 1.5 --color-fps 45 --no-logo
+neonfetch --style fire --palette sunset --speed 1.5 --color-fps 45 --no-logo
 ```
 
 ### Examples
@@ -167,6 +204,9 @@ neonfetch --style matrix --speed 0.3
 
 # Fast fire animation
 neonfetch --style fire --speed 3.0
+
+# Wave animation with Dracula colors
+neonfetch --style wave --palette dracula
 
 # Smooth aurora with high refresh rate
 neonfetch --style aurora --color-fps 60
@@ -245,6 +285,7 @@ src/
 ├── main.rs              # CLI parsing, frame loop, terminal guard, renderers
 ├── animation/           # Animation styles and effects
 │   ├── mod.rs          # Animation module exports
+│   ├── palette.rs      # Shared color palette definitions
 │   ├── styles.rs       # Style definitions and per-cell color functions
 │   ├── aurora.rs       # Aurora borealis effect
 │   ├── fall.rs         # Falling-letters physics simulation

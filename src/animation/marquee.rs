@@ -1,4 +1,4 @@
-use super::styles::hsv_to_rgb;
+use super::{palette::Palette, styles::hsv_to_rgb};
 
 // Marquee: a bright band sweeps across the text from left to right on a dim
 // base, like a theater-sign chase light. Slightly slanted per row so the band
@@ -27,6 +27,36 @@ pub fn calculate_marquee_color_at(
     let sat = 0.5 + intensity * 0.4;
     let val = 0.22 + intensity * 0.78;
     hsv_to_rgb(hue, sat.min(0.95), val.min(1.0))
+}
+
+pub fn calculate_marquee_color_with_palette(
+    time: f32,
+    row: usize,
+    col: usize,
+    term_w: usize,
+    palette: &Palette,
+) -> (u8, u8, u8) {
+    if palette.is_default() {
+        return calculate_marquee_color_at(time, row, col, term_w);
+    }
+    let w = term_w.max(1) as f32;
+    let band_len = (w * 0.22).clamp(8.0, 28.0);
+    let period = w + band_len * 2.0;
+    let head = (time * 32.0) % period;
+    let pos = (col as f32 + row as f32 * 1.5) % period;
+    let mut d = head - pos;
+    if d < 0.0 {
+        d += period;
+    }
+    let intensity = if d < band_len {
+        (1.0 - d / band_len).powf(1.4)
+    } else {
+        0.0
+    };
+    let hue = (time * 24.0 + col as f32 * 1.2) % 360.0;
+    let sat = 0.5 + intensity * 0.4;
+    let val = 0.22 + intensity * 0.78;
+    palette.sample_tinted(hue / 360.0, sat.min(0.95), val.min(1.0))
 }
 
 #[cfg(test)]

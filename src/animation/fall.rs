@@ -1,4 +1,4 @@
-use crate::util::framebuf::FrameBuf;
+use crate::{animation::palette::Palette, util::framebuf::FrameBuf};
 
 // Fall style: the rendered text detaches letter by letter (bottom rows first),
 // falls under gravity with a little horizontal drift, bounces, and piles up at
@@ -182,7 +182,7 @@ impl FallSim {
     }
 
     /// Render the current state into `fb`, one full terminal row per line.
-    pub fn render(&mut self, fb: &mut FrameBuf, elapsed: f32) {
+    pub fn render(&mut self, fb: &mut FrameBuf, elapsed: f32, palette: &Palette) {
         if self.w == 0 || self.h == 0 {
             return;
         }
@@ -230,11 +230,13 @@ impl FallSim {
             if elapsed < self.phase_start + fl.release {
                 // Not yet released: keep showing it at its home position.
                 if fl.orig_row < h && fl.orig_col < w {
-                    let rgb = if self.phase == Phase::Static {
-                        STATIC_RGB
+                    let (base_rgb, sat) = if self.phase == Phase::Static {
+                        (STATIC_RGB, 0.45)
                     } else {
-                        WAITING_RGB
+                        (WAITING_RGB, 0.35)
                     };
+                    let t = fall_palette_t(fl.orig_row, fl.orig_col, w, h, elapsed);
+                    let rgb = fall_palette_rgb(base_rgb, palette, t, sat);
                     let idx = fl.orig_row * w + fl.orig_col;
                     if self.overlay[idx].is_none() {
                         self.overlay[idx] = Some((fl.ch, rgb));
@@ -245,7 +247,9 @@ impl FallSim {
                 let cx = fl.xf.round().clamp(0.0, w as f32 - 1.0) as usize;
                 if ry >= 0.0 && (ry as usize) < h {
                     // Airborne letters draw over everything else.
-                    self.overlay[ry as usize * w + cx] = Some((fl.ch, ACTIVE_RGB));
+                    let t = fall_palette_t(ry as usize, cx, w, h, elapsed);
+                    let rgb = fall_palette_rgb(ACTIVE_RGB, palette, t, 0.55);
+                    self.overlay[ry as usize * w + cx] = Some((fl.ch, rgb));
                 }
             }
         }
@@ -256,13 +260,36 @@ impl FallSim {
             for col in 0..w {
                 match (self.overlay[base + col], self.settled[base + col]) {
                     (Some((ch, rgb)), _) => fb.put(ch, rgb),
-                    (None, Some(ch)) => fb.put(ch, PILE_RGB),
+                    (None, Some(ch)) => {
+                        let t = fall_palette_t(row, col, w, h, elapsed);
+                        fb.put(ch, fall_palette_rgb(PILE_RGB, palette, t, 0.45));
+                    }
                     (None, None) => fb.put(' ', PILE_RGB),
                 }
             }
             fb.end_line();
         }
     }
+}
+
+fn fall_palette_rgb(
+    default_rgb: (u8, u8, u8),
+    palette: &Palette,
+    t: f32,
+    saturation: f32,
+) -> (u8, u8, u8) {
+    if palette.is_default() {
+        default_rgb
+    } else {
+        let value = default_rgb.0.max(default_rgb.1).max(default_rgb.2) as f32 / 255.0;
+        palette.sample_tinted(t, saturation, value)
+    }
+}
+
+fn fall_palette_t(row: usize, col: usize, w: usize, h: usize, elapsed: f32) -> f32 {
+    let x = col as f32 / w.max(1) as f32;
+    let y = row as f32 / h.max(1) as f32;
+    (x * 0.65 + y * 0.25 + elapsed * 0.05).rem_euclid(1.0)
 }
 
 // Lean a settling letter toward whichever neighbor column is lower, so the
@@ -331,6 +358,7 @@ fn find_free_cell_in_row(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::animation::palette::default_palette;
 
     #[test]
     fn spaces_do_not_become_letters() {
@@ -359,5 +387,23 @@ mod tests {
         assert!(sim.phase == Phase::Settled, "letters never settled");
         let piled: usize = sim.pile.iter().map(|c| c.len()).sum();
         assert_eq!(piled, 30);
+    }
+
+    #[test]
+    fn default_palette_preserves_fall_colors() {
+        let palette = default_palette();
+        assert_eq!(
+            fall_palette_rgb(STATIC_RGB, palette, 0.25, 0.45),
+            STATIC_RGB
+        );
+        assert_eq!(
+            fall_palette_rgb(WAITING_RGB, palette, 0.50, 0.35),
+            WAITING_RGB
+        );
+        assert_eq!(
+            fall_palette_rgb(ACTIVE_RGB, palette, 0.75, 0.55),
+            ACTIVE_RGB
+        );
+        assert_eq!(fall_palette_rgb(PILE_RGB, palette, 0.90, 0.45), PILE_RGB);
     }
 }

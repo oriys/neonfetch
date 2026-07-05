@@ -3,9 +3,11 @@ mod system; // system information collection
 mod util; // shared utilities (e.g. ANSI parsing)
 
 use animation::{
-    AnimationStyle, FallSim, calculate_aurora_color_at, calculate_color, calculate_fire_color_at,
-    calculate_lava_color_at, calculate_marquee_color_at, calculate_matrix_color_at,
-    calculate_meteor_color_at, calculate_plasma_color_at, calculate_pulse_rings_color_at,
+    AnimationStyle, FallSim, Palette, calculate_aurora_color_with_palette,
+    calculate_color_with_palette, calculate_fire_color_with_palette,
+    calculate_lava_color_with_palette, calculate_marquee_color_with_palette,
+    calculate_matrix_color_with_palette, calculate_meteor_color_with_palette,
+    calculate_plasma_color_with_palette, calculate_pulse_rings_color_with_palette,
 };
 use system::generate_system_info;
 
@@ -38,10 +40,15 @@ fn main() -> io::Result<()> {
         );
         return Ok(());
     }
+    if args.iter().any(|a| a == "--list-palettes") {
+        println!("{}", animation::available_palette_names().join("\n"));
+        return Ok(());
+    }
     let show_logo = !parse_no_logo_argument(&args);
     let show_packages = !parse_no_packages_argument(&args);
     let mono = parse_mono_argument(&args);
     let no_color = parse_no_color_argument(&args);
+    let palette = parse_palette_argument(&args);
     let max_frames = if parse_frame_argument(&args) {
         Some(1usize)
     } else {
@@ -92,6 +99,7 @@ fn main() -> io::Result<()> {
         mono,
         no_color,
         max_frames,
+        palette,
     };
     show_animation_mode(&sysinfo, options)
 }
@@ -104,6 +112,7 @@ struct AnimationOptions {
     mono: bool,
     no_color: bool,
     max_frames: Option<usize>,
+    palette: &'static Palette,
 }
 
 /// RAII guard: raw mode + hidden cursor on entry, always restored on exit
@@ -184,6 +193,7 @@ fn show_animation_mode(lines: &[String], options: AnimationOptions) -> io::Resul
         mono,
         no_color,
         max_frames,
+        palette,
     } = options;
     let parsed: Vec<Vec<(String, char)>> = lines.iter().map(|l| parse_ansi_text(l)).collect();
     // Plain printable-character grid (ANSI stripped) for styles that need
@@ -271,11 +281,11 @@ fn show_animation_mode(lines: &[String], options: AnimationOptions) -> io::Resul
         rows_drawn = match style {
             AnimationStyle::Fall => {
                 fall.step(&plain, elapsed, dt);
-                fall.render(&mut fb, elapsed);
+                fall.render(&mut fb, elapsed, palette);
                 thu
             }
             AnimationStyle::Typing => {
-                render_typing(&mut fb, &plain, elapsed, twu, thu, total_chars)
+                render_typing(&mut fb, &plain, elapsed, twu, thu, total_chars, palette)
             }
             AnimationStyle::Glitch => render_glitch(
                 &mut fb,
@@ -287,6 +297,7 @@ fn show_animation_mode(lines: &[String], options: AnimationOptions) -> io::Resul
                 &mut last_glitch_check,
                 &mut glitch_shift,
                 &mut glitch_line,
+                palette,
             ),
             _ => {
                 if style == AnimationStyle::Fire {
@@ -302,6 +313,7 @@ fn show_animation_mode(lines: &[String], options: AnimationOptions) -> io::Resul
                     speed,
                     &sparks,
                     edge_mask.as_deref(),
+                    palette,
                 )
             }
         };
@@ -334,6 +346,7 @@ fn render_generic(
     speed: f32,
     sparks: &[Spark],
     edge_mask: Option<&[Vec<bool>]>,
+    palette: &Palette,
 ) -> usize {
     let mut rows = 0usize;
     for (li, row) in parsed.iter().take(th).enumerate() {
@@ -352,29 +365,35 @@ fn render_generic(
             }
             let stable_id = li * tw + printed;
             let mut rgb = match style {
-                AnimationStyle::Matrix => calculate_matrix_color_at(elapsed, li, printed, th),
-                AnimationStyle::Fire => calculate_fire_color_at(elapsed, li, printed, th, tw),
-                AnimationStyle::Plasma => {
-                    calculate_plasma_color_at(elapsed, li, printed, tw, th, speed)
+                AnimationStyle::Matrix => {
+                    calculate_matrix_color_with_palette(elapsed, li, printed, th, palette)
                 }
-                AnimationStyle::Aurora => {
-                    calculate_aurora_color_at(elapsed, li, printed, tw, th, speed)
+                AnimationStyle::Fire => {
+                    calculate_fire_color_with_palette(elapsed, li, printed, th, tw, palette)
                 }
-                AnimationStyle::PulseRings => {
-                    calculate_pulse_rings_color_at(elapsed, li, printed, tw, th, speed)
-                }
+                AnimationStyle::Plasma => calculate_plasma_color_with_palette(
+                    elapsed, li, printed, tw, th, speed, palette,
+                ),
+                AnimationStyle::Aurora => calculate_aurora_color_with_palette(
+                    elapsed, li, printed, tw, th, speed, palette,
+                ),
+                AnimationStyle::PulseRings => calculate_pulse_rings_color_with_palette(
+                    elapsed, li, printed, tw, th, speed, palette,
+                ),
                 AnimationStyle::Lava => {
-                    calculate_lava_color_at(elapsed, li, printed, tw, th, speed)
+                    calculate_lava_color_with_palette(elapsed, li, printed, tw, th, speed, palette)
                 }
-                AnimationStyle::Marquee => calculate_marquee_color_at(elapsed, li, printed, tw),
+                AnimationStyle::Marquee => {
+                    calculate_marquee_color_with_palette(elapsed, li, printed, tw, palette)
+                }
                 AnimationStyle::MeteorRain => {
-                    calculate_meteor_color_at(elapsed, li, printed, tw, th)
+                    calculate_meteor_color_with_palette(elapsed, li, printed, tw, th, palette)
                 }
                 // EdgeGlow rides on the Neon palette, adjusted below.
                 AnimationStyle::EdgeGlow => {
-                    calculate_color(&AnimationStyle::Neon, elapsed, stable_id)
+                    calculate_color_with_palette(&AnimationStyle::Neon, elapsed, stable_id, palette)
                 }
-                _ => calculate_color(style, elapsed, stable_id),
+                _ => calculate_color_with_palette(style, elapsed, stable_id, palette),
             };
             // Matrix marks non-trail cells with pure black: hide them.
             if *style == AnimationStyle::Matrix && rgb == (0, 0, 0) {
@@ -385,7 +404,7 @@ fn render_generic(
             if *style == AnimationStyle::Fire {
                 for sp in sparks {
                     if sp.x == printed && sp.y == li {
-                        rgb = blend_spark(rgb, sp, elapsed);
+                        rgb = blend_spark(rgb, sp, elapsed, palette);
                         break;
                     }
                 }
@@ -422,7 +441,7 @@ fn render_generic(
     rows
 }
 
-fn blend_spark(base: (u8, u8, u8), sp: &Spark, elapsed: f32) -> (u8, u8, u8) {
+fn blend_spark(base: (u8, u8, u8), sp: &Spark, elapsed: f32, palette: &Palette) -> (u8, u8, u8) {
     let t = (sp.age / sp.life).clamp(0.0, 1.0);
     // Asymmetric envelope: rise to peak then fall.
     let up = (t / sp.peak).clamp(0.0, 1.0);
@@ -434,11 +453,16 @@ fn blend_spark(base: (u8, u8, u8), sp: &Spark, elapsed: f32) -> (u8, u8, u8) {
     };
     let flicker = 0.85 + (elapsed * 60.0 + sp.x as f32 * 1.3).sin() * 0.15;
     let w = (envelope * flicker).clamp(0.0, 1.0);
-    let (hot_r, hot_g, hot_b) = (
-        255.0,
-        160.0 + sp.hue_jitter.min(70.0),
-        (sp.hue_jitter * 0.9).min(120.0),
-    );
+    let (hot_r, hot_g, hot_b) = if palette.is_default() {
+        (
+            255.0,
+            160.0 + sp.hue_jitter.min(70.0),
+            (sp.hue_jitter * 0.9).min(120.0),
+        )
+    } else {
+        let rgb = palette.sample_tinted(sp.hue_jitter / 80.0 + elapsed * 0.06, 0.80, 1.0);
+        (rgb.0 as f32, rgb.1 as f32, rgb.2 as f32)
+    };
     (
         (base.0 as f32 * (1.0 - w) + hot_r * w) as u8,
         (base.1 as f32 * (1.0 - w) + hot_g * w).min(255.0) as u8,
@@ -481,6 +505,7 @@ fn render_typing(
     tw: usize,
     th: usize,
     total_chars: usize,
+    palette: &Palette,
 ) -> usize {
     let reveal_speed = 120.0f32; // chars per animation second
     let chars_to_show = ((elapsed * reveal_speed) as usize).min(total_chars);
@@ -493,7 +518,12 @@ fn render_typing(
             shown += 1;
             if visible {
                 let hue = (elapsed * 35.0 + ci as f32 * 1.5 + li as f32 * 4.0) % 360.0;
-                fb.put(ch, animation::styles::hsv_to_rgb(hue, 0.25, 0.92));
+                let rgb = if palette.is_default() {
+                    animation::styles::hsv_to_rgb(hue, 0.25, 0.92)
+                } else {
+                    palette.sample_tinted(hue / 360.0, 0.25, 0.92)
+                };
+                fb.put(ch, rgb);
             } else {
                 fb.put(' ', (0, 0, 0));
             }
@@ -517,6 +547,7 @@ fn render_glitch(
     last_check: &mut f32,
     col_shift: &mut Vec<i32>,
     line_scratch: &mut Vec<Option<GlitchCell>>,
+    palette: &Palette,
 ) -> usize {
     if elapsed - *last_check > 0.08 {
         *last_check = elapsed;
@@ -551,7 +582,11 @@ fn render_glitch(
             let shift = col_shift.get(source_col).copied().unwrap_or(0);
             let dest = (source_col as i32 + shift).clamp(0, tw as i32 - 1) as usize;
             let base_hue = (elapsed * 120.0 + source_col as f32 * 3.0) % 360.0;
-            let (mut r, mut g, mut b) = animation::styles::hsv_to_rgb(base_hue, 0.9, 0.85);
+            let (mut r, mut g, mut b) = if palette.is_default() {
+                animation::styles::hsv_to_rgb(base_hue, 0.9, 0.85)
+            } else {
+                palette.sample_tinted(base_hue / 360.0, 0.9, 0.85)
+            };
             if distortion_energy > 0.0 && fastrand::f32() < 0.08 * distortion_energy {
                 std::mem::swap(&mut r, &mut g);
             }
@@ -654,6 +689,30 @@ fn parse_style_argument(args: &[String]) -> AnimationStyle {
     }
     // Default style now Neon
     AnimationStyle::Neon
+}
+
+fn parse_palette_argument(args: &[String]) -> &'static Palette {
+    for i in 0..args.len() {
+        if args[i] == "--palette" {
+            if i + 1 < args.len() {
+                return resolve_palette_argument(&args[i + 1]);
+            }
+            eprintln!("warning: --palette requires a name; using default palette");
+            return animation::default_palette();
+        } else if let Some(rest) = args[i].strip_prefix("--palette=") {
+            return resolve_palette_argument(rest);
+        }
+    }
+    animation::default_palette()
+}
+
+fn resolve_palette_argument(name: &str) -> &'static Palette {
+    if let Some(palette) = animation::find_palette(name) {
+        palette
+    } else {
+        eprintln!("warning: unknown palette '{}'; using default palette", name);
+        animation::palette::palette_or_default(name)
+    }
 }
 
 fn pick_random_style() -> AnimationStyle {
@@ -775,9 +834,10 @@ fn parse_seed_argument(args: &[String]) -> Option<u64> {
 
 fn print_help() {
     let styles = animation::styles::AnimationStyle::available_styles().join(", ");
+    let palettes = animation::available_palette_names().join(", ");
     println!(
-        "neonfetch - fast colorful animated system info\n\nUsage:\n  neonfetch [options]\n\nOptions:\n  --style <name>        Animation style (default: neon; or 'random')\n  --speed <val>         Animation speed (0.1-20.0, default 1.0)\n  --color-fps <val>     Color refresh FPS (5-120, default 30)\n  --duration <sec>      Auto-exit after N seconds (animation mode)\n  --frame               Render one frame and exit (animation mode)\n  --fetch               Print info once and exit\n  --json                Print JSON array and exit\n  --mono                Render in grayscale (animations/info)\n  --no-color, -C        Disable ANSI colors (plain text)\n  --no-logo, -L         Hide ASCII logo\n  --no-packages, -P     Skip package manager detection\n  --no-header           Hide username@hostname header divider\n  --seed <u64>          Deterministic random seed for animations\n  --list-styles         List available styles\n  -h, --help            Show this help\n  -V, --version         Show version\n\nKeys (animation mode):\n  q / Esc / Ctrl+C      Quit and restore the terminal\n\nStyles:\n  {}",
-        styles
+        "neonfetch - fast colorful animated system info\n\nUsage:\n  neonfetch [options]\n\nOptions:\n  --style <name>        Animation style (default: neon; or 'random')\n  --palette <name>      Color palette (default: default)\n  --speed <val>         Animation speed (0.1-20.0, default 1.0)\n  --color-fps <val>     Color refresh FPS (5-120, default 30)\n  --duration <sec>      Auto-exit after N seconds (animation mode)\n  --frame               Render one frame and exit (animation mode)\n  --fetch               Print info once and exit\n  --json                Print JSON array and exit\n  --mono                Render in grayscale (animations/info)\n  --no-color, -C        Disable ANSI colors (plain text)\n  --no-logo, -L         Hide ASCII logo\n  --no-packages, -P     Skip package manager detection\n  --no-header           Hide username@hostname header divider\n  --seed <u64>          Deterministic random seed for animations\n  --list-styles         List available styles\n  --list-palettes       List available palettes\n  -h, --help            Show this help\n  -V, --version         Show version\n\nKeys (animation mode):\n  q / Esc / Ctrl+C      Quit and restore the terminal\n\nStyles:\n  {}\n\nPalettes:\n  {}",
+        styles, palettes
     );
 }
 
