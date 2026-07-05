@@ -34,7 +34,7 @@ pub fn calculate_aurora_color_at(
     let und2 = ((x * 5.5) - t * 2.2).sin() * 0.5 + 0.5;
     let und3 = ((x * 6.5) + t * 1.7).sin() * 0.5 + 0.5;
     // Height gradient (fainter near bottom)
-    let sky_grad = (y * 0.9 + 0.1).powf(1.4); // 0.1..1
+    let sky_grad = ((1.0 - y) * 0.9 + 0.1).powf(1.4); // 0.1..1
     let mix1 = b1 * und1;
     let mix2 = b2 * und2;
     let mix3 = b3 * und3;

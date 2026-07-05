@@ -30,10 +30,8 @@ pub fn calculate_pulse_rings_color_at(
     let base = dist - t * ring_speed;
     // Compute ring phase relative to spacing
     let phase = base / ring_spacing;
-    // Use fractional part to form pulses, with fade over age
+    // Use fractional part to form pulses, with stable radial fade.
     let frac = phase - phase.floor();
-    // Age of the current ring traveling through this point
-    let age = phase.floor();
     // Envelope: sharp near center of ring (frac near 0), fade by gaussian around 0
     // shift frac so ring center at 0
     let d = (frac).min(1.0); // 0..1
@@ -41,9 +39,9 @@ pub fn calculate_pulse_rings_color_at(
     let centered = (d - 0.5).abs() * 2.0; // 0 at center, 1 at edge
     let thickness = 0.55; // controls thickness of bright area
     let ring_env = (-(centered * centered) / (thickness * thickness)).exp();
-    // Dampen older inner rings (age increases as rings pass)
-    let age_fade = (1.0 - (age * 0.06).max(0.0)).clamp(0.0, 1.0);
-    let intensity = ring_env * age_fade;
+    // Dampen rings by current radius, with a dim floor for large terminals.
+    let radial_fade = (1.0 - (dist / ring_spacing) * 0.06).clamp(0.20, 1.0);
+    let intensity = ring_env * radial_fade;
     if intensity < 0.01 {
         return (0, 0, 0);
     }

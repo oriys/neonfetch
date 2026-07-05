@@ -45,7 +45,7 @@ pub fn calculate_meteor_color_at(
         let cycle_len = h + trail + 4.0;
         let progress = time * fall_speed + r2 * cycle_len;
         let cycle = (progress / cycle_len) as u32;
-        let head_row = progress % cycle_len - trail * 0.5;
+        let head_row = progress % cycle_len;
 
         // New entry column every pass, spanning enough range that the whole
         // diagonal flight crosses the visible area.
@@ -70,7 +70,8 @@ pub fn calculate_meteor_color_at(
 
     if best_intensity <= 0.02 {
         // Dim night-sky base with a few faint twinkling cells.
-        let cell_hash = hash01((row as u32) << 16 | (col as u32 & 0xFFFF) | 0x400000);
+        let cell_hash =
+            hash01((row as u32).wrapping_mul(0x9E3779B9) ^ (col as u32).wrapping_mul(0x85EBCA6B));
         let twinkle = if cell_hash > 0.97 {
             ((time * 2.0 + cell_hash * 40.0).sin() * 0.5 + 0.5) * 0.25
         } else {

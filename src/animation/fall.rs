@@ -214,22 +214,11 @@ impl FallSim {
                         target += if target > col as isize { -1 } else { 1 };
                     }
                 }
-                // Resolve collisions: fall back to home column, then adjacent cells.
-                if self.settled[row * w + target as usize].is_some() {
-                    if self.settled[row * w + col].is_none() {
-                        target = col as isize;
-                    } else {
-                        for d in [1isize, -1] {
-                            let cand = target + d;
-                            if cand >= 0
-                                && cand < w as isize
-                                && self.settled[row * w + cand as usize].is_none()
-                            {
-                                target = cand;
-                                break;
-                            }
-                        }
-                    }
+                // Resolve collisions: scan outward from home before overwriting.
+                if self.settled[row * w + target as usize].is_some()
+                    && let Some(free_col) = find_free_cell_in_row(&self.settled, row, w, col)
+                {
+                    target = free_col as isize;
                 }
                 self.settled[row * w + target as usize] = Some(su.ch);
             }
@@ -313,6 +302,30 @@ fn settle_tilt(pile: &[Vec<SettledUnit>], col: usize, col_height: usize) -> f32 
         mag *= 0.85 + fastrand::f32() * 0.3;
     }
     dir * mag
+}
+
+fn find_free_cell_in_row(
+    settled: &[Option<char>],
+    row: usize,
+    width: usize,
+    home_col: usize,
+) -> Option<usize> {
+    let base = row * width;
+    if settled[base + home_col].is_none() {
+        return Some(home_col);
+    }
+    for d in 1..width {
+        if let Some(left) = home_col.checked_sub(d)
+            && settled[base + left].is_none()
+        {
+            return Some(left);
+        }
+        let right = home_col + d;
+        if right < width && settled[base + right].is_none() {
+            return Some(right);
+        }
+    }
+    None
 }
 
 #[cfg(test)]

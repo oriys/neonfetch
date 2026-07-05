@@ -25,17 +25,7 @@ pub fn calculate_matrix_color_at(
     let cycle = term_height as f32 + trail_len + 5.0;
     let head = (time * speed + phase) % cycle;
     let y = row as f32;
-    let dist = (y - head).abs();
-
-    let intensity = if y >= head - trail_len && y <= head {
-        if dist < 0.8 {
-            1.0
-        } else {
-            (1.0 - (dist / trail_len)).clamp(0.0, 1.0) * 0.85 + 0.15
-        }
-    } else {
-        0.0
-    };
+    let intensity = matrix_trail_intensity(y, head, trail_len);
 
     let flicker = if (((time * 30.0) as i32 + col as i32) % 47) == 0 {
         1.25
@@ -48,4 +38,28 @@ pub fn calculate_matrix_color_at(
     let g = (255.0 * intensity * flicker).clamp(0.0, 255.0) as u8;
     let o = (g as f32 * 0.12) as u8;
     (o, g, o)
+}
+
+fn matrix_trail_intensity(y: f32, head: f32, trail_len: f32) -> f32 {
+    let dist = (y - head).abs();
+    if y >= head - trail_len && y <= head {
+        if dist < 0.8 {
+            1.0
+        } else {
+            (1.0 - (dist / trail_len)).clamp(0.0, 1.0)
+        }
+    } else {
+        0.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn trail_reaches_zero_at_tail_end() {
+        assert_eq!(matrix_trail_intensity(2.0, 10.0, 8.0), 0.0);
+        assert!(matrix_trail_intensity(2.5, 10.0, 8.0) > 0.0);
+    }
 }

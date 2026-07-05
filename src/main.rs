@@ -173,6 +173,8 @@ struct GlitchBurst {
     dur: f32,
 }
 
+type GlitchCell = (char, (u8, u8, u8));
+
 fn show_animation_mode(lines: &[String], options: AnimationOptions) -> io::Result<()> {
     let AnimationOptions {
         speed,
@@ -214,6 +216,7 @@ fn show_animation_mode(lines: &[String], options: AnimationOptions) -> io::Resul
     let mut glitch_bursts: Vec<GlitchBurst> = Vec::new();
     let mut last_glitch_check = 0.0f32;
     let mut glitch_shift: Vec<i32> = Vec::new();
+    let mut glitch_line: Vec<Option<GlitchCell>> = Vec::new();
     let mut fall = FallSim::new();
     let mut fb = FrameBuf::new(mono, no_color);
     let mut last_dims: (u16, u16) = (0, 0);
@@ -283,6 +286,7 @@ fn show_animation_mode(lines: &[String], options: AnimationOptions) -> io::Resul
                 &mut glitch_bursts,
                 &mut last_glitch_check,
                 &mut glitch_shift,
+                &mut glitch_line,
             ),
             _ => {
                 if style == AnimationStyle::Fire {
@@ -450,7 +454,8 @@ fn update_sparks(sparks: &mut Vec<Spark>, dt: f32, tw: usize, th: usize) {
     // Spawn new scattered embers (cap 10), biased toward the hotter top zone.
     if sparks.len() < 10 {
         let remaining = 10 - sparks.len();
-        let spawn_prob = 0.25_f32 * remaining as f32 / 10.0;
+        let spawn_rate = 7.5_f32 * remaining as f32 / 10.0;
+        let spawn_prob = (spawn_rate * dt).min(1.0);
         if fastrand::f32() < spawn_prob {
             let sx = fastrand::usize(..tw.max(1));
             let r = fastrand::f32();
@@ -499,8 +504,8 @@ fn render_typing(
     rows
 }
 
-/// Digital glitch: intermittent bursts shift random columns sideways and
-/// distort colors while they last.
+/// Digital glitch: intermittent bursts shift random columns sideways and gate
+/// extra color distortion while the base rainbow hue keeps cycling.
 #[allow(clippy::too_many_arguments)]
 fn render_glitch(
     fb: &mut FrameBuf,
@@ -511,6 +516,7 @@ fn render_glitch(
     bursts: &mut Vec<GlitchBurst>,
     last_check: &mut f32,
     col_shift: &mut Vec<i32>,
+    line_scratch: &mut Vec<Option<GlitchCell>>,
 ) -> usize {
     if elapsed - *last_check > 0.08 {
         *last_check = elapsed;
@@ -524,13 +530,10 @@ fn render_glitch(
     }
     col_shift.clear();
     col_shift.resize(tw, 0);
+    let mut burst_energy = 0.0f32;
     for gb in bursts.iter() {
-        let phase = ((elapsed - gb.start) / gb.dur).clamp(0.0, 1.0);
-        let energy = if phase < 0.5 {
-            (phase / 0.5).powf(0.6)
-        } else {
-            (1.0 - (phase - 0.5) / 0.5).powf(1.4)
-        };
+        let energy = glitch_burst_energy(gb, elapsed);
+        burst_energy += energy;
         let shifts = (energy * 6.0).ceil() as usize;
         for _ in 0..shifts {
             let col = fastrand::usize(..tw.max(1));
@@ -538,35 +541,47 @@ fn render_glitch(
             col_shift[col] += dir * (1 + fastrand::i32(0..2));
         }
     }
+    let distortion_energy = burst_energy;
     let mut rows = 0usize;
     for (li, row) in plain.iter().take(th).enumerate() {
         fb.goto_line(li + 1);
-        let mut printed = 0usize;
-        for &ch in row.iter() {
-            if printed >= tw {
-                break;
-            }
-            let shift = col_shift.get(printed).copied().unwrap_or(0);
-            let dest = (printed as i32 + shift).clamp(0, tw as i32 - 1) as usize;
-            let base_hue = (elapsed * 120.0 + printed as f32 * 3.0) % 360.0;
+        line_scratch.clear();
+        line_scratch.resize(tw, None);
+        for (source_col, &ch) in row.iter().take(tw).enumerate() {
+            let shift = col_shift.get(source_col).copied().unwrap_or(0);
+            let dest = (source_col as i32 + shift).clamp(0, tw as i32 - 1) as usize;
+            let base_hue = (elapsed * 120.0 + source_col as f32 * 3.0) % 360.0;
             let (mut r, mut g, mut b) = animation::styles::hsv_to_rgb(base_hue, 0.9, 0.85);
-            if fastrand::f32() < 0.08 {
+            if distortion_energy > 0.0 && fastrand::f32() < 0.08 * distortion_energy {
                 std::mem::swap(&mut r, &mut g);
             }
-            if fastrand::f32() < 0.06 {
+            if distortion_energy > 0.0 && fastrand::f32() < 0.06 * distortion_energy {
                 b = b.saturating_add(70);
             }
-            while printed < dest {
-                fb.put(' ', (0, 0, 0));
-                printed += 1;
+            line_scratch[dest] = Some((ch, (r, g, b)));
+        }
+        for &cell in line_scratch.iter() {
+            match cell {
+                Some((ch, rgb)) => fb.put(ch, rgb),
+                None => fb.put(' ', (0, 0, 0)),
             }
-            fb.put(ch, (r, g, b));
-            printed += 1;
         }
         fb.end_line();
         rows = li + 1;
     }
     rows
+}
+
+fn glitch_burst_energy(gb: &GlitchBurst, elapsed: f32) -> f32 {
+    if elapsed < gb.start || elapsed >= gb.start + gb.dur {
+        return 0.0;
+    }
+    let phase = ((elapsed - gb.start) / gb.dur).clamp(0.0, 1.0);
+    if phase < 0.5 {
+        (phase / 0.5).powf(0.6)
+    } else {
+        (1.0 - (phase - 0.5) / 0.5).powf(1.4)
+    }
 }
 
 /// A cell is an "edge" if it is printable and touches a blank (or the text
