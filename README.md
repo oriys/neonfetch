@@ -206,15 +206,24 @@ neonfetch --logo-file examples/custom-logo.txt --style fire
 neonfetch --distro ubuntu --fetch
 neonfetch --distro=arch --style neon
 
-# JSON output (machine-readable, prints and exits)
+# JSON output (machine-readable keyed object, prints and exits)
 neonfetch --json
-neonfetch --json --no-logo
+neonfetch --json --hide network
 
 # Grayscale or plain text (no ANSI colors)
 neonfetch --mono
 neonfetch --no-color
 
-# Skip package manager detection
+# Show only selected info fields in the requested order
+neonfetch --show os,cpu,memory
+
+# Hide selected info fields
+neonfetch --hide network,packages
+
+# List available info field keys
+neonfetch --list-fields
+
+# Hide package manager detection
 neonfetch --no-packages
 neonfetch -P
 
@@ -292,6 +301,12 @@ neonfetch --fetch
 
 # Preview an Ubuntu logo on any platform
 neonfetch --distro ubuntu --fetch
+
+# Quick info without network or package fields
+neonfetch --fetch --hide network,packages
+
+# Only OS, CPU, and memory in that order
+neonfetch --fetch --show os,cpu,memory
 ```
 
 ### Linux Distribution Logos
@@ -310,22 +325,31 @@ Supported distro IDs:
 
 Neonfetch shows comprehensive system information including:
 
-- **Host**: Computer model and hostname
+- **Header**: Username and hostname
 - **OS**: Operating system and version
+- **Host**: Computer model
 - **Kernel**: Kernel version
 - **Uptime**: System uptime
-- **Packages**: Installed package count (Homebrew on macOS, dpkg on Linux)
 - **Shell**: Current shell
-- **Resolution**: Display resolution
-- **DE/WM**: Desktop environment or window manager
-- **Theme**: System theme information
-- **Icons**: Icon theme
 - **Terminal**: Terminal emulator
-- **CPU**: Processor model and usage
+- **CPU**: Processor model, core count, architecture, and base frequency when available
+- **Cores**: Physical/logical core detail
 - **GPU**: Graphics card information
+- **Resolution**: Display resolution
+- **Battery**: Battery percentage and status when available
+- **Packages**: Installed package count
+- **Temperature**: Average thermal sensor reading when available
 - **Memory**: RAM usage and total
+- **Swap**: Swap usage or disabled status
 - **Disk**: Storage usage
 - **Network**: Active network interface and IP
+- **Locale**: Current locale
+
+Use `--show <keys>` to whitelist fields and control their output order, or
+`--hide <keys>` to remove selected fields from the default order. `--show` and
+`--hide` are mutually exclusive. Unknown keys print a warning to stderr and are
+ignored. Legacy `--no-packages`/`-P` and `--no-header` are kept as hide aliases.
+Available keys are listed by `neonfetch --list-fields`.
 
 ## Technical Details
 
@@ -338,7 +362,7 @@ Neonfetch shows comprehensive system information including:
   terminal with one `write` + `flush`; consecutive cells with the same color
   share one ANSI escape sequence
 - System info probes (GPU, packages, battery, ...) run in parallel threads at
-  startup
+  startup only when their fields are selected
 
 ### Platform Support
 

@@ -11,7 +11,10 @@ use animation::{
     calculate_plasma_color_with_palette, calculate_pulse_rings_color_with_palette,
 };
 use config::Config;
-use system::generate_system_info;
+use system::{
+    INFO_FIELD_KEYS, InfoFieldSelection, SystemInfoOptions, generate_system_info,
+    generate_system_info_json, info_field_key,
+};
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, size};
@@ -46,6 +49,10 @@ fn main() -> io::Result<()> {
     }
     if args.iter().any(|a| a == "--list-palettes") {
         println!("{}", animation::available_palette_names().join("\n"));
+        return Ok(());
+    }
+    if args.iter().any(|a| a == "--list-fields") {
+        println!("{}", INFO_FIELD_KEYS.join("\n"));
         return Ok(());
     }
     let config_path = parse_config_path_argument(&args);
@@ -95,6 +102,16 @@ fn main() -> io::Result<()> {
         None
     };
     let distro_id = parse_distro_argument(&args);
+    let field_selection = match parse_field_selection_argument(&args, show_packages, show_header) {
+        Ok(selection) => selection,
+        Err(message) => {
+            eprintln!("error: {}", message);
+            std::process::exit(2);
+        }
+    };
+    let info_options = SystemInfoOptions::new(show_logo, field_selection)
+        .with_logo_override(logo_override)
+        .with_distro_id(distro_id);
     let max_frames = if parse_frame_argument(&args) {
         Some(1usize)
     } else {
@@ -103,52 +120,26 @@ fn main() -> io::Result<()> {
     // Auto fallback to one-shot in non-TTY pipelines
     let is_tty = stdout().is_terminal();
     if !is_tty && !parse_json_argument(&args) {
-        let lines = generate_system_info(
-            show_logo,
-            show_packages,
-            show_header,
-            logo_override.as_deref(),
-            distro_id.as_deref(),
-        );
+        let lines = generate_system_info(&info_options);
         for line in lines {
             println!("{}", line);
         }
         return Ok(());
     }
     if parse_json_argument(&args) {
-        let lines = generate_system_info(
-            show_logo,
-            show_packages,
-            show_header,
-            logo_override.as_deref(),
-            distro_id.as_deref(),
-        );
-        let json = serde_json::to_string(&lines).unwrap_or_else(|_| "[]".to_string());
-        println!("{}", json);
+        println!("{}", generate_system_info_json(&info_options));
         return Ok(());
     }
     if parse_fetch_argument(&args) {
         // One-shot system info output, no animation
-        let lines = generate_system_info(
-            show_logo,
-            show_packages,
-            show_header,
-            logo_override.as_deref(),
-            distro_id.as_deref(),
-        );
+        let lines = generate_system_info(&info_options);
         let mut out = stdout();
         for line in lines {
             writeln!(out, "{}", line)?;
         }
         return Ok(());
     }
-    let sysinfo = generate_system_info(
-        show_logo,
-        show_packages,
-        show_header,
-        logo_override.as_deref(),
-        distro_id.as_deref(),
-    );
+    let sysinfo = generate_system_info(&info_options);
     let options = AnimationOptions {
         speed: effective_config.speed,
         style: effective_config.style,
@@ -902,6 +893,107 @@ fn parse_no_logo_argument(args: &[String], config: &Config) -> bool {
     config.no_logo.unwrap_or(false)
 }
 
+fn parse_field_selection_argument(
+    args: &[String],
+    show_packages: bool,
+    show_header: bool,
+) -> Result<InfoFieldSelection, String> {
+    let mut show_values = Vec::new();
+    let mut hide_values = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        let arg = &args[i];
+        if arg == "--show" {
+            let value = parse_required_value(args, i, "--show")?;
+            show_values.push(value);
+            i += 2;
+            continue;
+        }
+        if let Some(rest) = arg.strip_prefix("--show=") {
+            show_values.push(rest.to_string());
+            i += 1;
+            continue;
+        }
+        if arg == "--hide" {
+            let value = parse_required_value(args, i, "--hide")?;
+            hide_values.push(value);
+            i += 2;
+            continue;
+        }
+        if let Some(rest) = arg.strip_prefix("--hide=") {
+            hide_values.push(rest.to_string());
+            i += 1;
+            continue;
+        }
+        if arg == "--no-packages" || arg == "--no-pkgs" || arg == "-P" {
+            hide_values.push("packages".to_string());
+        } else if arg == "--no-header" {
+            hide_values.push("header".to_string());
+        }
+        i += 1;
+    }
+
+    if show_values.is_empty() {
+        if !show_packages {
+            hide_values.push("packages".to_string());
+        }
+        if !show_header {
+            hide_values.push("header".to_string());
+        }
+    }
+
+    if !show_values.is_empty() && !hide_values.is_empty() {
+        return Err("--show and --hide cannot be used together".to_string());
+    }
+    if !show_values.is_empty() {
+        return Ok(InfoFieldSelection::Show(parse_field_key_list(
+            &show_values,
+            "--show",
+        )));
+    }
+    if !hide_values.is_empty() {
+        return Ok(InfoFieldSelection::Hide(parse_field_key_list(
+            &hide_values,
+            "--hide",
+        )));
+    }
+    Ok(InfoFieldSelection::All)
+}
+
+fn parse_required_value(args: &[String], index: usize, flag: &str) -> Result<String, String> {
+    let Some(value) = args.get(index + 1) else {
+        return Err(format!("missing value for {}", flag));
+    };
+    if value.starts_with('-') {
+        return Err(format!("missing value for {}", flag));
+    }
+    Ok(value.clone())
+}
+
+fn parse_field_key_list(values: &[String], flag: &str) -> Vec<&'static str> {
+    let mut keys = Vec::new();
+    for value in values {
+        for raw_key in value.split(',') {
+            let trimmed = raw_key.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let normalized = trimmed.to_ascii_lowercase();
+            if let Some(key) = info_field_key(&normalized) {
+                if !keys.contains(&key) {
+                    keys.push(key);
+                }
+            } else {
+                eprintln!(
+                    "warning: unknown info field '{}' in {}; ignoring",
+                    trimmed, flag
+                );
+            }
+        }
+    }
+    keys
+}
+
 fn parse_fetch_argument(args: &[String]) -> bool {
     args.iter().any(|a| a == "--fetch")
 }
@@ -1100,8 +1192,11 @@ fn print_help() {
     let distros = system::supported_distro_ids().join(", ");
     let palettes = animation::available_palette_names().join(", ");
     println!(
-        "neonfetch - fast colorful animated system info\n\nUsage:\n  neonfetch [options]\n\nOptions:\n  --style <name>        Animation style (default: neon; real style, random, or daily)\n  --palette <name>      Color palette (default: default)\n  --speed <val>         Animation speed (0.1-20.0, default 1.0)\n  --color-fps <val>     Color refresh FPS (5-120, default 30)\n  --duration <sec>      Auto-exit after N seconds (animation mode)\n  --frame               Render one frame and exit (animation mode)\n  --fetch               Print info once and exit\n  --json                Print JSON array and exit\n  --mono                Render in grayscale (animations/info)\n  --no-color, -C        Disable ANSI colors (plain text)\n  --logo-file <path>    Use a UTF-8 text file as the ASCII logo\n  --no-logo, -L         Hide ASCII logo\n  --distro <id>         Force a distro logo on any platform\n  --no-packages, -P     Skip package manager detection\n  --no-header           Hide username@hostname header divider\n  --seed <u64>          Deterministic random seed for animations and --style random\n  --config <path>       Load config from path\n  --no-config           Ignore config files\n  --print-config        Print effective config and exit\n  --list-styles         List available styles\n  --list-palettes       List available palettes\n  -h, --help            Show this help\n  -V, --version         Show version\n\nConfig search:\n  --config, NEONFETCH_CONFIG, XDG_CONFIG_HOME, ~/.config/neonfetch/config.toml\n\nKeys (animation mode):\n  q / Esc / Ctrl+C      Quit and restore the terminal\n\nDistros:\n  {}\n\nStyles:\n  {}\n\nPalettes:\n  {}\n\nPseudo-styles:\n  random                Pick a random real style each run; honors --seed\n  daily                 Pick one real style from the local date",
-        distros, styles, palettes
+        "neonfetch - fast colorful animated system info\n\nUsage:\n  neonfetch [options]\n\nOptions:\n  --style <name>        Animation style (default: neon; real style, random, or daily)\n  --palette <name>      Color palette (default: default)\n  --speed <val>         Animation speed (0.1-20.0, default 1.0)\n  --color-fps <val>     Color refresh FPS (5-120, default 30)\n  --duration <sec>      Auto-exit after N seconds (animation mode)\n  --frame               Render one frame and exit (animation mode)\n  --fetch               Print info once and exit\n  --json                Print keyed JSON object and exit\n  --show <keys>         Show only comma-separated info fields in that order\n  --hide <keys>         Hide comma-separated info fields\n  --list-fields         List available info field keys\n  --mono                Render in grayscale (animations/info)\n  --no-color, -C        Disable ANSI colors (plain text)\n  --logo-file <path>    Use a UTF-8 text file as the ASCII logo\n  --no-logo, -L         Hide ASCII logo\n  --distro <id>         Force a distro logo on any platform\n  --no-packages, -P     Hide packages field and skip package detection\n  --no-header           Hide username@hostname header divider\n  --seed <u64>          Deterministic random seed for animations and --style random\n  --config <path>       Load config from path\n  --no-config           Ignore config files\n  --print-config        Print effective config and exit\n  --list-styles         List available styles\n  --list-palettes       List available palettes\n  -h, --help            Show this help\n  -V, --version         Show version\n\nConfig search:\n  --config, NEONFETCH_CONFIG, XDG_CONFIG_HOME, ~/.config/neonfetch/config.toml\n\nInfo fields:\n  {}\n\nKeys (animation mode):\n  q / Esc / Ctrl+C      Quit and restore the terminal\n\nDistros:\n  {}\n\nStyles:\n  {}\n\nPalettes:\n  {}\n\nPseudo-styles:\n  random                Pick a random real style each run; honors --seed\n  daily                 Pick one real style from the local date",
+        INFO_FIELD_KEYS.join(", "),
+        distros,
+        styles,
+        palettes
     );
 }
 
