@@ -12,7 +12,7 @@ multiple visual styles.
 - **Cross-platform**: Works on macOS and Linux
 - **Customizable Speed**: Adjust animation speed to your preference
 - **Smooth Performance**: Optimized for minimal CPU usage
-- **ASCII Art**: Platform-specific logos and branding
+- **ASCII Art**: Platform-specific logos or your own UTF-8 logo file
 
 ## Installation
 
@@ -162,6 +162,9 @@ neonfetch --frame
 neonfetch --no-logo
 neonfetch -L
 
+# Use a custom UTF-8 ASCII logo file
+neonfetch --logo-file examples/custom-logo.txt --style fire
+
 # JSON output (machine-readable, prints and exits)
 neonfetch --json
 neonfetch --json --no-logo
@@ -193,6 +196,9 @@ neonfetch --style matrix --speed 0.3
 
 # Fast fire animation
 neonfetch --style fire --speed 3.0
+
+# Fire animation with a custom ASCII logo
+neonfetch --logo-file examples/custom-logo.txt --style fire
 
 # Smooth aurora with high refresh rate
 neonfetch --style aurora --color-fps 60

@@ -258,6 +258,7 @@ pub fn generate_system_info(
     show_logo: bool,
     show_packages: bool,
     show_header: bool,
+    logo_override: Option<&[String]>,
 ) -> Vec<String> {
     // Spawn background threads for slow external-command probes so they
     // run concurrently with the sysinfo initialization and fast probes.
@@ -276,11 +277,18 @@ pub fn generate_system_info(
         .with_memory(MemoryRefreshKind::everything());
     let sys = System::new_with_specifics(sys_refreshes);
 
-    let ascii = if show_logo { Some(ascii_logo()) } else { None };
-    let info: Vec<String> = match ascii {
-        Some(ascii_lines) => ascii_lines.into_iter().map(|s| s.to_string()).collect(),
-        None => Vec::new(),
+    let mut logo_lines: Vec<String> = if show_logo {
+        match logo_override {
+            Some(lines) => lines.to_vec(),
+            None => ascii_logo().into_iter().map(|s| s.to_string()).collect(),
+        }
+    } else {
+        Vec::new()
     };
+    if logo_override.is_some() {
+        pad_custom_logo_lines(&mut logo_lines);
+    }
+    let show_logo = show_logo && !logo_lines.is_empty();
 
     let username = env::var("USER")
         .or_else(|_| env::var("USERNAME"))
@@ -612,14 +620,14 @@ pub fn generate_system_info(
     // If a logo is shown, offset info by 2 lines only when the header is present
     let info_offset = if show_logo && show_header { 2 } else { 0 };
     let max_lines = if show_logo {
-        info.len().max(info_lines.len() + info_offset)
+        logo_lines.len().max(info_lines.len() + info_offset)
     } else {
         info_lines.len()
     };
     for i in 0..max_lines {
         if show_logo {
-            let ascii_part = if i < info.len() {
-                &info[i]
+            let ascii_part = if i < logo_lines.len() {
+                &logo_lines[i]
             } else {
                 "                                  "
             };
@@ -639,4 +647,16 @@ pub fn generate_system_info(
         }
     }
     result
+}
+
+fn pad_custom_logo_lines(lines: &mut [String]) {
+    let width = lines
+        .iter()
+        .map(|line| line.chars().count())
+        .max()
+        .unwrap_or(0);
+    for line in lines {
+        let padding = width.saturating_sub(line.chars().count()) + 2;
+        line.push_str(&" ".repeat(padding));
+    }
 }

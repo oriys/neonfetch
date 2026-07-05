@@ -12,7 +12,7 @@ use system::generate_system_info;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, size};
 use std::{
-    env,
+    env, fs,
     io::{self, IsTerminal, Write, stdout},
     process::Command,
     thread,
@@ -21,6 +21,10 @@ use std::{
 
 use util::ansi::parse_ansi_text;
 use util::framebuf::FrameBuf;
+
+const MAX_LOGO_LINES: usize = 60;
+const MAX_LOGO_COLUMNS: usize = 120;
+const TAB_WIDTH: usize = 4;
 
 fn main() -> io::Result<()> {
     let args: Vec<String> = env::args().collect();
@@ -37,6 +41,20 @@ fn main() -> io::Result<()> {
         return Ok(());
     }
     let show_logo = !parse_no_logo_argument(&args);
+    let logo_override = if show_logo {
+        parse_logo_file_argument(&args).and_then(|path| match load_logo_file(&path) {
+            Ok(lines) => Some(lines),
+            Err(err) => {
+                eprintln!(
+                    "warning: could not read logo file '{}': {}; using built-in logo",
+                    path, err
+                );
+                None
+            }
+        })
+    } else {
+        None
+    };
     let show_packages = !parse_no_packages_argument(&args);
     let mono = parse_mono_argument(&args);
     let no_color = parse_no_color_argument(&args);
@@ -53,21 +71,36 @@ fn main() -> io::Result<()> {
     // Auto fallback to one-shot in non-TTY pipelines
     let is_tty = stdout().is_terminal();
     if !is_tty && !parse_json_argument(&args) {
-        let lines = generate_system_info(show_logo, show_packages, show_header);
+        let lines = generate_system_info(
+            show_logo,
+            show_packages,
+            show_header,
+            logo_override.as_deref(),
+        );
         for line in lines {
             println!("{}", line);
         }
         return Ok(());
     }
     if parse_json_argument(&args) {
-        let lines = generate_system_info(show_logo, show_packages, show_header);
+        let lines = generate_system_info(
+            show_logo,
+            show_packages,
+            show_header,
+            logo_override.as_deref(),
+        );
         let json = serde_json::to_string(&lines).unwrap_or_else(|_| "[]".to_string());
         println!("{}", json);
         return Ok(());
     }
     if parse_fetch_argument(&args) {
         // One-shot system info output, no animation
-        let lines = generate_system_info(show_logo, show_packages, show_header);
+        let lines = generate_system_info(
+            show_logo,
+            show_packages,
+            show_header,
+            logo_override.as_deref(),
+        );
         let mut out = stdout();
         for line in lines {
             writeln!(out, "{}", line)?;
@@ -82,7 +115,12 @@ fn main() -> io::Result<()> {
     }
     let color_fps = parse_color_fps_argument(&args);
     let duration = parse_duration_argument(&args);
-    let sysinfo = generate_system_info(show_logo, show_packages, show_header);
+    let sysinfo = generate_system_info(
+        show_logo,
+        show_packages,
+        show_header,
+        logo_override.as_deref(),
+    );
     let options = AnimationOptions {
         speed,
         style,
@@ -801,6 +839,19 @@ fn parse_no_header_argument(args: &[String]) -> bool {
     args.iter().any(|a| a == "--no-header")
 }
 
+fn parse_logo_file_argument(args: &[String]) -> Option<String> {
+    for i in 0..args.len() {
+        if args[i] == "--logo-file" {
+            if i + 1 < args.len() {
+                return Some(args[i + 1].clone());
+            }
+        } else if let Some(rest) = args[i].strip_prefix("--logo-file=") {
+            return Some(rest.to_string());
+        }
+    }
+    None
+}
+
 fn parse_seed_argument(args: &[String]) -> Option<u64> {
     for i in 0..args.len() {
         if args[i] == "--seed"
@@ -817,13 +868,42 @@ fn parse_seed_argument(args: &[String]) -> Option<u64> {
     None
 }
 
+fn load_logo_file(path: &str) -> io::Result<Vec<String>> {
+    let text = fs::read_to_string(path)?;
+    Ok(sanitize_logo_text(&text))
+}
+
+fn sanitize_logo_text(text: &str) -> Vec<String> {
+    let lines: Vec<String> = text
+        .lines()
+        .take(MAX_LOGO_LINES)
+        .map(sanitize_logo_line)
+        .collect();
+
+    if lines.iter().all(|line| line.trim().is_empty()) {
+        Vec::new()
+    } else {
+        lines
+    }
+}
+
+fn sanitize_logo_line(line: &str) -> String {
+    let line = line.strip_suffix('\r').unwrap_or(line);
+    let expanded = line.replace('\t', &" ".repeat(TAB_WIDTH));
+    parse_ansi_text(&expanded)
+        .into_iter()
+        .filter_map(|(ansi, ch)| (ansi.is_empty() && ch != '\0').then_some(ch))
+        .take(MAX_LOGO_COLUMNS)
+        .collect()
+}
+
 fn print_help() {
     let mut style_names = animation::styles::AnimationStyle::available_styles();
     style_names.push("random");
     style_names.push("daily");
     let styles = style_names.join(", ");
     println!(
-        "neonfetch - fast colorful animated system info\n\nUsage:\n  neonfetch [options]\n\nOptions:\n  --style <name>        Animation style (default: neon; real style, random, or daily)\n  --speed <val>         Animation speed (0.1-20.0, default 1.0)\n  --color-fps <val>     Color refresh FPS (5-120, default 30)\n  --duration <sec>      Auto-exit after N seconds (animation mode)\n  --frame               Render one frame and exit (animation mode)\n  --fetch               Print info once and exit\n  --json                Print JSON array and exit\n  --mono                Render in grayscale (animations/info)\n  --no-color, -C        Disable ANSI colors (plain text)\n  --no-logo, -L         Hide ASCII logo\n  --no-packages, -P     Skip package manager detection\n  --no-header           Hide username@hostname header divider\n  --seed <u64>          Deterministic random seed for animations and --style random\n  --list-styles         List available styles\n  -h, --help            Show this help\n  -V, --version         Show version\n\nKeys (animation mode):\n  q / Esc / Ctrl+C      Quit and restore the terminal\n\nStyles:\n  {}\n\nPseudo-styles:\n  random                Pick a random real style each run; honors --seed\n  daily                 Pick one real style from the local date",
+        "neonfetch - fast colorful animated system info\n\nUsage:\n  neonfetch [options]\n\nOptions:\n  --style <name>        Animation style (default: neon; real style, random, or daily)\n  --speed <val>         Animation speed (0.1-20.0, default 1.0)\n  --color-fps <val>     Color refresh FPS (5-120, default 30)\n  --duration <sec>      Auto-exit after N seconds (animation mode)\n  --frame               Render one frame and exit (animation mode)\n  --fetch               Print info once and exit\n  --json                Print JSON array and exit\n  --mono                Render in grayscale (animations/info)\n  --no-color, -C        Disable ANSI colors (plain text)\n  --logo-file <path>    Use a UTF-8 text file as the ASCII logo\n  --no-logo, -L         Hide ASCII logo\n  --no-packages, -P     Skip package manager detection\n  --no-header           Hide username@hostname header divider\n  --seed <u64>          Deterministic random seed for animations and --style random\n  --list-styles         List available styles\n  -h, --help            Show this help\n  -V, --version         Show version\n\nKeys (animation mode):\n  q / Esc / Ctrl+C      Quit and restore the terminal\n\nStyles:\n  {}\n\nPseudo-styles:\n  random                Pick a random real style each run; honors --seed\n  daily                 Pick one real style from the local date",
         styles
     );
 }
