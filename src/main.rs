@@ -14,8 +14,9 @@ use crossterm::terminal::{disable_raw_mode, enable_raw_mode, size};
 use std::{
     env,
     io::{self, IsTerminal, Write, stdout},
+    process::Command,
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use util::ansi::parse_ansi_text;
@@ -32,10 +33,7 @@ fn main() -> io::Result<()> {
         return Ok(());
     }
     if args.iter().any(|a| a == "--list-styles") {
-        println!(
-            "{}",
-            animation::styles::AnimationStyle::available_styles().join("\n")
-        );
+        print_style_list();
         return Ok(());
     }
     let show_logo = !parse_no_logo_argument(&args);
@@ -48,7 +46,8 @@ fn main() -> io::Result<()> {
         None
     };
     let show_header = !parse_no_header_argument(&args);
-    if let Some(seed) = parse_seed_argument(&args) {
+    let seed = parse_seed_argument(&args);
+    if let Some(seed) = seed {
         fastrand::seed(seed);
     }
     // Auto fallback to one-shot in non-TTY pipelines
@@ -76,7 +75,7 @@ fn main() -> io::Result<()> {
         return Ok(());
     }
     // Parse style first so we can decide default speed for Matrix.
-    let style = parse_style_argument(&args);
+    let style = parse_style_argument(&args, seed);
     let (mut speed, speed_set) = parse_speed_argument(&args);
     if style == AnimationStyle::Matrix && !speed_set {
         speed = 10.0; // Matrix default speed = 10 when not specified
@@ -630,24 +629,33 @@ fn parse_speed_argument(args: &[String]) -> (f32, bool) {
     }
     (1.0, false)
 }
-fn parse_style_argument(args: &[String]) -> AnimationStyle {
+fn parse_style_argument(args: &[String], seed: Option<u64>) -> AnimationStyle {
     for i in 0..args.len() {
         if args[i] == "--style" || args[i] == "--animation" {
             if i + 1 < args.len() {
                 let s = &args[i + 1];
                 if s.eq_ignore_ascii_case("random") || s.eq_ignore_ascii_case("rand") {
-                    return pick_random_style();
+                    return pick_random_style(seed);
+                }
+                if s.eq_ignore_ascii_case("daily") {
+                    return pick_daily_style_for_date(current_local_yyyymmdd());
                 }
                 return AnimationStyle::from_str(s);
             }
         } else if let Some(rest) = args[i].strip_prefix("--style=") {
             if rest.eq_ignore_ascii_case("random") || rest.eq_ignore_ascii_case("rand") {
-                return pick_random_style();
+                return pick_random_style(seed);
+            }
+            if rest.eq_ignore_ascii_case("daily") {
+                return pick_daily_style_for_date(current_local_yyyymmdd());
             }
             return AnimationStyle::from_str(rest);
         } else if let Some(rest) = args[i].strip_prefix("--animation=") {
             if rest.eq_ignore_ascii_case("random") || rest.eq_ignore_ascii_case("rand") {
-                return pick_random_style();
+                return pick_random_style(seed);
+            }
+            if rest.eq_ignore_ascii_case("daily") {
+                return pick_daily_style_for_date(current_local_yyyymmdd());
             }
             return AnimationStyle::from_str(rest);
         }
@@ -656,29 +664,65 @@ fn parse_style_argument(args: &[String]) -> AnimationStyle {
     AnimationStyle::Neon
 }
 
-fn pick_random_style() -> AnimationStyle {
-    use animation::styles::AnimationStyle as AS;
-    let styles = [
-        AS::Neon,
-        AS::Wave,
-        AS::Pulse,
-        AS::Matrix,
-        AS::Fire,
-        AS::Fall,
-        AS::Marquee,
-        AS::Typing,
-        AS::Plasma,
-        AS::Glow,
-        AS::Pixel,
-        AS::Aurora,
-        AS::Glitch,
-        AS::PulseRings,
-        AS::MeteorRain,
-        AS::Lava,
-        AS::EdgeGlow,
-    ];
-    let idx = fastrand::usize(..styles.len());
-    styles[idx].clone()
+fn pick_random_style(seed: Option<u64>) -> AnimationStyle {
+    let styles = AnimationStyle::all();
+    let idx = if let Some(seed) = seed {
+        let mut rng = fastrand::Rng::with_seed(seed);
+        rng.usize(..styles.len())
+    } else {
+        fastrand::usize(..styles.len())
+    };
+    styles[idx]
+}
+
+fn pick_daily_style_for_date(yyyymmdd: u32) -> AnimationStyle {
+    let styles = AnimationStyle::all();
+    let idx = daily_style_index(yyyymmdd, styles.len());
+    styles[idx]
+}
+
+fn daily_style_index(yyyymmdd: u32, len: usize) -> usize {
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    for byte in yyyymmdd.to_le_bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    (hash as usize) % len
+}
+
+fn current_local_yyyymmdd() -> u32 {
+    if let Ok(output) = Command::new("date").arg("+%Y%m%d").output()
+        && output.status.success()
+        && let Ok(text) = std::str::from_utf8(&output.stdout)
+        && let Ok(date) = text.trim().parse::<u32>()
+    {
+        return date;
+    }
+    current_utc_yyyymmdd()
+}
+
+fn current_utc_yyyymmdd() -> u32 {
+    let days = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+        / 86_400;
+    yyyymmdd_from_unix_days(days as i64)
+}
+
+fn yyyymmdd_from_unix_days(days: i64) -> u32 {
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = mp + if mp < 10 { 3 } else { -9 };
+    let year = y + if month <= 2 { 1 } else { 0 };
+
+    (year * 10_000 + month * 100 + day) as u32
 }
 
 fn parse_color_fps_argument(args: &[String]) -> f32 {
@@ -774,13 +818,65 @@ fn parse_seed_argument(args: &[String]) -> Option<u64> {
 }
 
 fn print_help() {
-    let styles = animation::styles::AnimationStyle::available_styles().join(", ");
+    let mut style_names = animation::styles::AnimationStyle::available_styles();
+    style_names.push("random");
+    style_names.push("daily");
+    let styles = style_names.join(", ");
     println!(
-        "neonfetch - fast colorful animated system info\n\nUsage:\n  neonfetch [options]\n\nOptions:\n  --style <name>        Animation style (default: neon; or 'random')\n  --speed <val>         Animation speed (0.1-20.0, default 1.0)\n  --color-fps <val>     Color refresh FPS (5-120, default 30)\n  --duration <sec>      Auto-exit after N seconds (animation mode)\n  --frame               Render one frame and exit (animation mode)\n  --fetch               Print info once and exit\n  --json                Print JSON array and exit\n  --mono                Render in grayscale (animations/info)\n  --no-color, -C        Disable ANSI colors (plain text)\n  --no-logo, -L         Hide ASCII logo\n  --no-packages, -P     Skip package manager detection\n  --no-header           Hide username@hostname header divider\n  --seed <u64>          Deterministic random seed for animations\n  --list-styles         List available styles\n  -h, --help            Show this help\n  -V, --version         Show version\n\nKeys (animation mode):\n  q / Esc / Ctrl+C      Quit and restore the terminal\n\nStyles:\n  {}",
+        "neonfetch - fast colorful animated system info\n\nUsage:\n  neonfetch [options]\n\nOptions:\n  --style <name>        Animation style (default: neon; real style, random, or daily)\n  --speed <val>         Animation speed (0.1-20.0, default 1.0)\n  --color-fps <val>     Color refresh FPS (5-120, default 30)\n  --duration <sec>      Auto-exit after N seconds (animation mode)\n  --frame               Render one frame and exit (animation mode)\n  --fetch               Print info once and exit\n  --json                Print JSON array and exit\n  --mono                Render in grayscale (animations/info)\n  --no-color, -C        Disable ANSI colors (plain text)\n  --no-logo, -L         Hide ASCII logo\n  --no-packages, -P     Skip package manager detection\n  --no-header           Hide username@hostname header divider\n  --seed <u64>          Deterministic random seed for animations and --style random\n  --list-styles         List available styles\n  -h, --help            Show this help\n  -V, --version         Show version\n\nKeys (animation mode):\n  q / Esc / Ctrl+C      Quit and restore the terminal\n\nStyles:\n  {}\n\nPseudo-styles:\n  random                Pick a random real style each run; honors --seed\n  daily                 Pick one real style from the local date",
         styles
     );
 }
 
+fn print_style_list() {
+    for name in animation::styles::AnimationStyle::available_styles() {
+        println!("{}", name);
+    }
+    println!("random (pseudo): pick a random real style each run; honors --seed");
+    println!("daily (pseudo): pick one real style from the local date");
+}
+
 fn print_version() {
     println!("neonfetch {}", env!("CARGO_PKG_VERSION"));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn daily_style_is_deterministic_for_date() {
+        let today = pick_daily_style_for_date(20_260_706);
+        let same_today = pick_daily_style_for_date(20_260_706);
+        let tomorrow = pick_daily_style_for_date(20_260_707);
+        let same_tomorrow = pick_daily_style_for_date(20_260_707);
+
+        assert_eq!(today, same_today);
+        assert_eq!(tomorrow, same_tomorrow);
+    }
+
+    #[test]
+    fn seeded_random_style_is_deterministic() {
+        assert_eq!(pick_random_style(Some(7)), pick_random_style(Some(7)));
+    }
+
+    #[test]
+    fn seeded_random_style_covers_more_than_one_style() {
+        let mut seen = Vec::new();
+
+        for seed in 0..100 {
+            let style = pick_random_style(Some(seed));
+            if !seen.contains(&style) {
+                seen.push(style);
+            }
+        }
+
+        assert!(seen.len() > 1);
+    }
+
+    #[test]
+    fn unix_days_to_yyyymmdd_handles_known_dates() {
+        assert_eq!(yyyymmdd_from_unix_days(0), 19_700_101);
+        assert_eq!(yyyymmdd_from_unix_days(20_000), 20_241_004);
+    }
 }

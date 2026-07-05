@@ -7,7 +7,7 @@ multiple visual styles.
 
 ## Features
 
-- **16 Animation Styles**: Choose from various eye-catching visual effects
+- **17 Animation Styles**: Choose from various eye-catching visual effects
 - **Real-time System Info**: CPU, memory, disk, GPU, network, and more
 - **Cross-platform**: Works on macOS and Linux
 - **Customizable Speed**: Adjust animation speed to your preference
@@ -65,7 +65,7 @@ on panics.
 
 ### Animation Styles
 
-Choose from 16 different animation styles:
+Choose from 17 different animation styles:
 
 ```bash
 # Neon glow effect (default)
@@ -90,6 +90,12 @@ neonfetch --style plasma
 
 # Pick a random style
 neonfetch --style random
+
+# Pick one style per local day
+neonfetch --style daily
+
+# Reproduce a random style choice
+neonfetch --style random --seed 7
 
 # List all available styles
 neonfetch --list-styles
@@ -116,6 +122,25 @@ neonfetch --list-styles
 | `meteor-rain` | `mr`, `meteor`   | Falling meteors               |
 | `lava`        | `lv`             | Lava flow effect              |
 | `edge-glow`   | `eg`             | Edge highlighting             |
+
+Pseudo-styles:
+
+| Style    | Description                                                |
+| -------- | ---------------------------------------------------------- |
+| `random` | Pick a random real style each run; honors `--seed`         |
+| `daily`  | Pick one real style from the local date, stable all day    |
+
+#### Shell Startup
+
+Add one of these to your shell rc file for zero-config variety:
+
+```bash
+# Fresh style each terminal
+neonfetch --style random --duration 3
+
+# Stable style for the day
+neonfetch --style daily --duration 3
+```
 
 ### Command Line Options
 
@@ -154,6 +179,7 @@ neonfetch --no-header
 
 # Deterministic animations with a fixed random seed
 neonfetch --seed 42
+neonfetch --style random --seed 7
 
 # Combine options
 neonfetch --style fire --speed 1.5 --color-fps 45 --no-logo

@@ -1,6 +1,6 @@
 use std::f32;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AnimationStyle {
     Wave,
     Pulse,
@@ -22,7 +22,29 @@ pub enum AnimationStyle {
 }
 
 impl AnimationStyle {
-    pub fn from_str(s: &str) -> Self {
+    pub fn all() -> &'static [AnimationStyle] {
+        &[
+            AnimationStyle::Neon,
+            AnimationStyle::Wave,
+            AnimationStyle::Pulse,
+            AnimationStyle::Matrix,
+            AnimationStyle::Fire,
+            AnimationStyle::Fall,
+            AnimationStyle::Marquee,
+            AnimationStyle::Typing,
+            AnimationStyle::Plasma,
+            AnimationStyle::Glow,
+            AnimationStyle::Pixel,
+            AnimationStyle::Aurora,
+            AnimationStyle::Glitch,
+            AnimationStyle::PulseRings,
+            AnimationStyle::MeteorRain,
+            AnimationStyle::Lava,
+            AnimationStyle::EdgeGlow,
+        ]
+    }
+
+    pub fn from_name(s: &str) -> Self {
         match s.to_lowercase().as_str() {
             // classic removed; map legacy aliases to Neon for backward compatibility
             "classic" | "c" => AnimationStyle::Neon,
@@ -49,26 +71,37 @@ impl AnimationStyle {
         }
     }
 
-    pub fn available_styles() -> &'static [&'static str] {
-        &[
-            "neon",
-            "wave",
-            "pulse",
-            "matrix",
-            "fire",
-            "fall",
-            "marquee",
-            "typing",
-            "plasma",
-            "glow",
-            "pixel",
-            "aurora",
-            "glitch",
-            "pulse-rings",
-            "meteor-rain",
-            "lava",
-            "edge-glow",
-        ]
+    pub fn from_str(s: &str) -> Self {
+        Self::from_name(s)
+    }
+
+    pub fn canonical_name(&self) -> &'static str {
+        match self {
+            AnimationStyle::Neon => "neon",
+            AnimationStyle::Wave => "wave",
+            AnimationStyle::Pulse => "pulse",
+            AnimationStyle::Matrix => "matrix",
+            AnimationStyle::Fire => "fire",
+            AnimationStyle::Fall => "fall",
+            AnimationStyle::Marquee => "marquee",
+            AnimationStyle::Typing => "typing",
+            AnimationStyle::Plasma => "plasma",
+            AnimationStyle::Glow => "glow",
+            AnimationStyle::Pixel => "pixel",
+            AnimationStyle::Aurora => "aurora",
+            AnimationStyle::Glitch => "glitch",
+            AnimationStyle::PulseRings => "pulse-rings",
+            AnimationStyle::MeteorRain => "meteor-rain",
+            AnimationStyle::Lava => "lava",
+            AnimationStyle::EdgeGlow => "edge-glow",
+        }
+    }
+
+    pub fn available_styles() -> Vec<&'static str> {
+        Self::all()
+            .iter()
+            .map(AnimationStyle::canonical_name)
+            .collect()
     }
 }
 
@@ -210,5 +243,27 @@ pub fn calculate_color(style: &AnimationStyle, time: f32, char_pos: usize) -> (u
         AnimationStyle::MeteorRain => (180, 180, 180), // Actual color generated in meteor-rain renderer
         AnimationStyle::Lava => (255, 80, 20),         // Actual color generated in lava module
         AnimationStyle::EdgeGlow => (200, 200, 200), // Actual color adjusted in renderer edge pass
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AnimationStyle;
+
+    #[test]
+    fn all_styles_have_parseable_canonical_names() {
+        let styles = AnimationStyle::all();
+
+        assert_eq!(styles.len(), 17);
+        assert_eq!(AnimationStyle::available_styles().len(), styles.len());
+
+        for style in styles {
+            assert_eq!(
+                AnimationStyle::from_name(style.canonical_name()),
+                *style,
+                "{} should parse back to its style",
+                style.canonical_name()
+            );
+        }
     }
 }
