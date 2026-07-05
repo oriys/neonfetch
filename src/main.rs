@@ -48,27 +48,31 @@ fn main() -> io::Result<()> {
         None
     };
     let show_header = !parse_no_header_argument(&args);
+    let distro_id = parse_distro_argument(&args);
     if let Some(seed) = parse_seed_argument(&args) {
         fastrand::seed(seed);
     }
     // Auto fallback to one-shot in non-TTY pipelines
     let is_tty = stdout().is_terminal();
     if !is_tty && !parse_json_argument(&args) {
-        let lines = generate_system_info(show_logo, show_packages, show_header);
+        let lines =
+            generate_system_info(show_logo, show_packages, show_header, distro_id.as_deref());
         for line in lines {
             println!("{}", line);
         }
         return Ok(());
     }
     if parse_json_argument(&args) {
-        let lines = generate_system_info(show_logo, show_packages, show_header);
+        let lines =
+            generate_system_info(show_logo, show_packages, show_header, distro_id.as_deref());
         let json = serde_json::to_string(&lines).unwrap_or_else(|_| "[]".to_string());
         println!("{}", json);
         return Ok(());
     }
     if parse_fetch_argument(&args) {
         // One-shot system info output, no animation
-        let lines = generate_system_info(show_logo, show_packages, show_header);
+        let lines =
+            generate_system_info(show_logo, show_packages, show_header, distro_id.as_deref());
         let mut out = stdout();
         for line in lines {
             writeln!(out, "{}", line)?;
@@ -83,7 +87,7 @@ fn main() -> io::Result<()> {
     }
     let color_fps = parse_color_fps_argument(&args);
     let duration = parse_duration_argument(&args);
-    let sysinfo = generate_system_info(show_logo, show_packages, show_header);
+    let sysinfo = generate_system_info(show_logo, show_packages, show_header, distro_id.as_deref());
     let options = AnimationOptions {
         speed,
         style,
@@ -757,6 +761,25 @@ fn parse_no_header_argument(args: &[String]) -> bool {
     args.iter().any(|a| a == "--no-header")
 }
 
+fn parse_distro_argument(args: &[String]) -> Option<String> {
+    for i in 0..args.len() {
+        if args[i] == "--distro" {
+            if i + 1 < args.len() {
+                let value = args[i + 1].trim();
+                if !value.is_empty() {
+                    return Some(value.to_ascii_lowercase());
+                }
+            }
+        } else if let Some(rest) = args[i].strip_prefix("--distro=") {
+            let value = rest.trim();
+            if !value.is_empty() {
+                return Some(value.to_ascii_lowercase());
+            }
+        }
+    }
+    None
+}
+
 fn parse_seed_argument(args: &[String]) -> Option<u64> {
     for i in 0..args.len() {
         if args[i] == "--seed"
@@ -775,9 +798,10 @@ fn parse_seed_argument(args: &[String]) -> Option<u64> {
 
 fn print_help() {
     let styles = animation::styles::AnimationStyle::available_styles().join(", ");
+    let distros = system::supported_distro_ids().join(", ");
     println!(
-        "neonfetch - fast colorful animated system info\n\nUsage:\n  neonfetch [options]\n\nOptions:\n  --style <name>        Animation style (default: neon; or 'random')\n  --speed <val>         Animation speed (0.1-20.0, default 1.0)\n  --color-fps <val>     Color refresh FPS (5-120, default 30)\n  --duration <sec>      Auto-exit after N seconds (animation mode)\n  --frame               Render one frame and exit (animation mode)\n  --fetch               Print info once and exit\n  --json                Print JSON array and exit\n  --mono                Render in grayscale (animations/info)\n  --no-color, -C        Disable ANSI colors (plain text)\n  --no-logo, -L         Hide ASCII logo\n  --no-packages, -P     Skip package manager detection\n  --no-header           Hide username@hostname header divider\n  --seed <u64>          Deterministic random seed for animations\n  --list-styles         List available styles\n  -h, --help            Show this help\n  -V, --version         Show version\n\nKeys (animation mode):\n  q / Esc / Ctrl+C      Quit and restore the terminal\n\nStyles:\n  {}",
-        styles
+        "neonfetch - fast colorful animated system info\n\nUsage:\n  neonfetch [options]\n\nOptions:\n  --style <name>        Animation style (default: neon; or 'random')\n  --speed <val>         Animation speed (0.1-20.0, default 1.0)\n  --color-fps <val>     Color refresh FPS (5-120, default 30)\n  --duration <sec>      Auto-exit after N seconds (animation mode)\n  --frame               Render one frame and exit (animation mode)\n  --fetch               Print info once and exit\n  --json                Print JSON array and exit\n  --mono                Render in grayscale (animations/info)\n  --no-color, -C        Disable ANSI colors (plain text)\n  --no-logo, -L         Hide ASCII logo\n  --distro <id>         Force a distro logo on any platform\n  --no-packages, -P     Skip package manager detection\n  --no-header           Hide username@hostname header divider\n  --seed <u64>          Deterministic random seed for animations\n  --list-styles         List available styles\n  -h, --help            Show this help\n  -V, --version         Show version\n\nKeys (animation mode):\n  q / Esc / Ctrl+C      Quit and restore the terminal\n\nDistros:\n  {}\n\nStyles:\n  {}",
+        distros, styles
     );
 }
 

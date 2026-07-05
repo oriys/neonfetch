@@ -1,4 +1,4 @@
-use super::ascii_logo;
+use super::ascii_logo_with_distro;
 #[cfg(target_os = "macos")]
 use libc;
 use std::env;
@@ -258,6 +258,7 @@ pub fn generate_system_info(
     show_logo: bool,
     show_packages: bool,
     show_header: bool,
+    distro_id: Option<&str>,
 ) -> Vec<String> {
     // Spawn background threads for slow external-command probes so they
     // run concurrently with the sysinfo initialization and fast probes.
@@ -276,7 +277,11 @@ pub fn generate_system_info(
         .with_memory(MemoryRefreshKind::everything());
     let sys = System::new_with_specifics(sys_refreshes);
 
-    let ascii = if show_logo { Some(ascii_logo()) } else { None };
+    let ascii = if show_logo {
+        Some(ascii_logo_with_distro(distro_id))
+    } else {
+        None
+    };
     let info: Vec<String> = match ascii {
         Some(ascii_lines) => ascii_lines.into_iter().map(|s| s.to_string()).collect(),
         None => Vec::new(),

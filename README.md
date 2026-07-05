@@ -12,7 +12,7 @@ multiple visual styles.
 - **Cross-platform**: Works on macOS and Linux
 - **Customizable Speed**: Adjust animation speed to your preference
 - **Smooth Performance**: Optimized for minimal CPU usage
-- **ASCII Art**: Platform-specific logos and branding
+- **ASCII Art**: Platform-specific logos, plus Linux distro auto-detection
 
 ## Installation
 
@@ -137,6 +137,10 @@ neonfetch --frame
 neonfetch --no-logo
 neonfetch -L
 
+# Force a Linux distro logo on any platform
+neonfetch --distro ubuntu --fetch
+neonfetch --distro=arch --style neon
+
 # JSON output (machine-readable, prints and exits)
 neonfetch --json
 neonfetch --json --no-logo
@@ -173,7 +177,22 @@ neonfetch --style aurora --color-fps 60
 
 # Quick system info without animation
 neonfetch --fetch
+
+# Preview an Ubuntu logo on any platform
+neonfetch --distro ubuntu --fetch
 ```
+
+### Linux Distribution Logos
+
+On Linux, Neonfetch reads `/etc/os-release` and selects a matching logo from
+`ID`; if that is unknown, it falls back to the first known entry in `ID_LIKE`.
+Unknown distros use the generic Linux logo. Use `--distro <id>` to force a
+logo on any platform.
+
+Supported distro IDs:
+
+`arch`, `ubuntu`, `debian`, `fedora`, `alpine`, `nixos`, `manjaro`,
+`opensuse`, `gentoo`, `linuxmint`, `kali`, `void`.
 
 ## System Information Displayed
 
@@ -212,7 +231,7 @@ Neonfetch shows comprehensive system information including:
 ### Platform Support
 
 - **macOS**: Full support with native system information gathering
-- **Linux**: Full support with comprehensive hardware detection
+- **Linux**: Full support with comprehensive hardware detection and distro logos
 - **Windows**: Not currently supported
 
 ### Dependencies
@@ -257,6 +276,7 @@ src/
 ├── system/             # System information gathering
 │   ├── mod.rs         # System module exports
 │   ├── info.rs        # Main system info collection
+│   ├── logo_distro.rs # Linux distro logo mapping and os-release parsing
 │   ├── logo_macos.rs  # macOS ASCII art
 │   └── logo_linux.rs  # Linux ASCII art
 └── util/              # Utilities
