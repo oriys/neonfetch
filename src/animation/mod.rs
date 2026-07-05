@@ -1,15 +1,21 @@
 pub mod aurora;
+pub mod fall;
 pub mod fire;
 pub mod lava;
+pub mod marquee;
 pub mod matrix;
+pub mod meteor;
 pub mod plasma;
 pub mod pulse_rings;
 pub mod styles;
 
 pub use aurora::calculate_aurora_color_at;
+pub use fall::FallSim;
 pub use fire::calculate_fire_color_at;
 pub use lava::calculate_lava_color_at;
+pub use marquee::calculate_marquee_color_at;
 pub use matrix::calculate_matrix_color_at;
+pub use meteor::calculate_meteor_color_at;
 pub use plasma::calculate_plasma_color_at;
 pub use pulse_rings::calculate_pulse_rings_color_at;
 pub use styles::{AnimationStyle, calculate_color};

@@ -59,6 +59,10 @@ neonfetch
 neonfetch --fetch
 ```
 
+While an animation is running, press `q`, `Esc`, or `Ctrl+C` to quit. The
+terminal (cursor, colors, input mode) is always restored on exit, including
+on panics.
+
 ### Animation Styles
 
 Choose from 16 different animation styles:
@@ -196,10 +200,14 @@ Neonfetch shows comprehensive system information including:
 
 ### Performance
 
-- Written in Rust for optimal performance
-- Minimal CPU usage during animations
-- Efficient memory management
-- Smooth 30+ FPS animations by default
+- Frame pacing is wall-clock based: `--color-fps` caps the real frame rate,
+  and `--speed` only accelerates the animation clock, so CPU usage stays flat
+  at any speed
+- Each frame is rendered into a single reused buffer and written to the
+  terminal with one `write` + `flush`; consecutive cells with the same color
+  share one ANSI escape sequence
+- System info probes (GPU, packages, battery, ...) run in parallel threads at
+  startup
 
 ### Platform Support
 
@@ -209,12 +217,11 @@ Neonfetch shows comprehensive system information including:
 
 ### Dependencies
 
-- `crossterm`: Cross-platform terminal manipulation
+- `crossterm`: Cross-platform terminal manipulation and input events
 - `sysinfo`: System information gathering
-- `regex`: Pattern matching for system parsing
 - `fastrand`: Fast random number generation for effects
 - `get_if_addrs`: Network interface detection
-- `atty`: TTY detection
+- `serde_json`: `--json` output
 
 ## Development
 
@@ -235,13 +242,16 @@ cargo test
 
 ```
 src/
-├── main.rs              # Main application logic and animation loop
+├── main.rs              # CLI parsing, frame loop, terminal guard, renderers
 ├── animation/           # Animation styles and effects
 │   ├── mod.rs          # Animation module exports
-│   ├── styles.rs       # Style definitions and color utilities
+│   ├── styles.rs       # Style definitions and per-cell color functions
 │   ├── aurora.rs       # Aurora borealis effect
-│   ├── fire.rs         # Fire particle system
+│   ├── fall.rs         # Falling-letters physics simulation
+│   ├── fire.rs         # Fire gradient (sparks overlaid in main loop)
+│   ├── marquee.rs      # Sweeping highlight band
 │   ├── matrix.rs       # Matrix digital rain
+│   ├── meteor.rs       # Diagonal meteor streaks
 │   ├── plasma.rs       # Plasma wave effects
 │   └── ...            # Other animation implementations
 ├── system/             # System information gathering
@@ -251,7 +261,8 @@ src/
 │   └── logo_linux.rs  # Linux ASCII art
 └── util/              # Utilities
     ├── mod.rs         # Utility module exports
-    └── ansi.rs        # ANSI escape sequence parsing
+    ├── ansi.rs        # ANSI escape sequence parsing
+    └── framebuf.rs    # Reusable frame buffer with color-run deduplication
 ```
 
 ## Contributing

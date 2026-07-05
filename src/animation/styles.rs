@@ -98,13 +98,7 @@ pub fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
 
 // (former rainbow helper removed after Classic style removal)
 
-pub fn calculate_color(
-    style: &AnimationStyle,
-    _freq: f32,
-    _i: f32,
-    time: f32,
-    char_pos: usize,
-) -> (u8, u8, u8) {
+pub fn calculate_color(style: &AnimationStyle, time: f32, char_pos: usize) -> (u8, u8, u8) {
     match style {
         AnimationStyle::Wave => {
             let spatial = char_pos as f32 * 0.35;
