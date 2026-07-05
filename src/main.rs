@@ -1,4 +1,5 @@
 mod animation; // animations & color logic
+mod config; // config file loading and parsing
 mod system; // system information collection
 mod util; // shared utilities (e.g. ANSI parsing)
 
@@ -7,6 +8,7 @@ use animation::{
     calculate_lava_color_at, calculate_marquee_color_at, calculate_matrix_color_at,
     calculate_meteor_color_at, calculate_plasma_color_at, calculate_pulse_rings_color_at,
 };
+use config::Config;
 use system::generate_system_info;
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -38,19 +40,42 @@ fn main() -> io::Result<()> {
         );
         return Ok(());
     }
-    let show_logo = !parse_no_logo_argument(&args);
-    let show_packages = !parse_no_packages_argument(&args);
-    let mono = parse_mono_argument(&args);
-    let no_color = parse_no_color_argument(&args);
+    let config_path = parse_config_path_argument(&args);
+    let config = Config::load(config_path.as_deref(), parse_no_config_argument(&args));
+    let seed = parse_seed_argument(&args, &config);
+    if let Some(seed) = seed {
+        fastrand::seed(seed);
+    }
+    // Parse style first so we can decide default speed for Matrix.
+    let style = parse_style_argument(&args, &config);
+    let (mut speed, speed_set) = parse_speed_argument(&args, &config);
+    if style == AnimationStyle::Matrix && !speed_set {
+        speed = 10.0; // Matrix default speed = 10 when not specified
+    }
+    let effective_config = EffectiveConfig {
+        speed,
+        style,
+        color_fps: parse_color_fps_argument(&args, &config),
+        duration: parse_duration_argument(&args, &config),
+        no_logo: parse_no_logo_argument(&args, &config),
+        no_packages: parse_no_packages_argument(&args, &config),
+        no_header: parse_no_header_argument(&args, &config),
+        mono: parse_mono_argument(&args, &config),
+        no_color: parse_no_color_argument(&args, &config),
+        seed,
+    };
+    if parse_print_config_argument(&args) {
+        print_effective_config(&effective_config);
+        return Ok(());
+    }
+    let show_logo = !effective_config.no_logo;
+    let show_packages = !effective_config.no_packages;
+    let show_header = !effective_config.no_header;
     let max_frames = if parse_frame_argument(&args) {
         Some(1usize)
     } else {
         None
     };
-    let show_header = !parse_no_header_argument(&args);
-    if let Some(seed) = parse_seed_argument(&args) {
-        fastrand::seed(seed);
-    }
     // Auto fallback to one-shot in non-TTY pipelines
     let is_tty = stdout().is_terminal();
     if !is_tty && !parse_json_argument(&args) {
@@ -75,22 +100,14 @@ fn main() -> io::Result<()> {
         }
         return Ok(());
     }
-    // Parse style first so we can decide default speed for Matrix.
-    let style = parse_style_argument(&args);
-    let (mut speed, speed_set) = parse_speed_argument(&args);
-    if style == AnimationStyle::Matrix && !speed_set {
-        speed = 10.0; // Matrix default speed = 10 when not specified
-    }
-    let color_fps = parse_color_fps_argument(&args);
-    let duration = parse_duration_argument(&args);
     let sysinfo = generate_system_info(show_logo, show_packages, show_header);
     let options = AnimationOptions {
-        speed,
-        style,
-        color_fps,
-        duration,
-        mono,
-        no_color,
+        speed: effective_config.speed,
+        style: effective_config.style,
+        color_fps: effective_config.color_fps,
+        duration: effective_config.duration,
+        mono: effective_config.mono,
+        no_color: effective_config.no_color,
         max_frames,
     };
     show_animation_mode(&sysinfo, options)
@@ -104,6 +121,19 @@ struct AnimationOptions {
     mono: bool,
     no_color: bool,
     max_frames: Option<usize>,
+}
+
+struct EffectiveConfig {
+    speed: f32,
+    style: AnimationStyle,
+    color_fps: f32,
+    duration: Option<f32>,
+    no_logo: bool,
+    no_packages: bool,
+    no_header: bool,
+    mono: bool,
+    no_color: bool,
+    seed: Option<u64>,
 }
 
 /// RAII guard: raw mode + hidden cursor on entry, always restored on exit
@@ -615,7 +645,28 @@ fn build_edge_mask(plain: &[Vec<char>]) -> Vec<Vec<bool>> {
         .collect()
 }
 
-fn parse_speed_argument(args: &[String]) -> (f32, bool) {
+fn parse_config_path_argument(args: &[String]) -> Option<String> {
+    for i in 0..args.len() {
+        if args[i] == "--config" {
+            if i + 1 < args.len() {
+                return Some(args[i + 1].clone());
+            }
+        } else if let Some(rest) = args[i].strip_prefix("--config=") {
+            return Some(rest.to_string());
+        }
+    }
+    None
+}
+
+fn parse_no_config_argument(args: &[String]) -> bool {
+    args.iter().any(|a| a == "--no-config")
+}
+
+fn parse_print_config_argument(args: &[String]) -> bool {
+    args.iter().any(|a| a == "--print-config")
+}
+
+fn parse_speed_argument(args: &[String], config: &Config) -> (f32, bool) {
     for i in 0..args.len() {
         if (args[i] == "--speed" || args[i] == "-s")
             && i + 1 < args.len()
@@ -628,32 +679,35 @@ fn parse_speed_argument(args: &[String]) -> (f32, bool) {
             return (v.clamp(0.1, 20.0), true);
         }
     }
+    if let Some(value) = config.speed {
+        return (value.clamp(0.1, 20.0), true);
+    }
     (1.0, false)
 }
-fn parse_style_argument(args: &[String]) -> AnimationStyle {
+
+fn parse_style_argument(args: &[String], config: &Config) -> AnimationStyle {
     for i in 0..args.len() {
         if args[i] == "--style" || args[i] == "--animation" {
             if i + 1 < args.len() {
-                let s = &args[i + 1];
-                if s.eq_ignore_ascii_case("random") || s.eq_ignore_ascii_case("rand") {
-                    return pick_random_style();
-                }
-                return AnimationStyle::from_str(s);
+                return parse_style_value(&args[i + 1]);
             }
         } else if let Some(rest) = args[i].strip_prefix("--style=") {
-            if rest.eq_ignore_ascii_case("random") || rest.eq_ignore_ascii_case("rand") {
-                return pick_random_style();
-            }
-            return AnimationStyle::from_str(rest);
+            return parse_style_value(rest);
         } else if let Some(rest) = args[i].strip_prefix("--animation=") {
-            if rest.eq_ignore_ascii_case("random") || rest.eq_ignore_ascii_case("rand") {
-                return pick_random_style();
-            }
-            return AnimationStyle::from_str(rest);
+            return parse_style_value(rest);
         }
     }
-    // Default style now Neon
+    if let Some(style) = &config.style {
+        return parse_style_value(style);
+    }
     AnimationStyle::Neon
+}
+
+fn parse_style_value(value: &str) -> AnimationStyle {
+    if value.eq_ignore_ascii_case("random") || value.eq_ignore_ascii_case("rand") {
+        return pick_random_style();
+    }
+    AnimationStyle::from_str(value)
 }
 
 fn pick_random_style() -> AnimationStyle {
@@ -681,7 +735,7 @@ fn pick_random_style() -> AnimationStyle {
     styles[idx].clone()
 }
 
-fn parse_color_fps_argument(args: &[String]) -> f32 {
+fn parse_color_fps_argument(args: &[String], config: &Config) -> f32 {
     for i in 0..args.len() {
         if args[i] == "--color-fps"
             && i + 1 < args.len()
@@ -694,16 +748,19 @@ fn parse_color_fps_argument(args: &[String]) -> f32 {
             return v.clamp(5.0, 120.0);
         }
     }
+    if let Some(value) = config.color_fps {
+        return (value as f32).clamp(5.0, 120.0);
+    }
     30.0
 }
 
-fn parse_no_logo_argument(args: &[String]) -> bool {
+fn parse_no_logo_argument(args: &[String], config: &Config) -> bool {
     for arg in args {
         if arg == "--no-logo" || arg == "-L" {
             return true;
         }
     }
-    false
+    config.no_logo.unwrap_or(false)
 }
 
 fn parse_fetch_argument(args: &[String]) -> bool {
@@ -714,19 +771,19 @@ fn parse_json_argument(args: &[String]) -> bool {
     args.iter().any(|a| a == "--json")
 }
 
-fn parse_no_color_argument(args: &[String]) -> bool {
-    args.iter().any(|a| a == "--no-color" || a == "-C")
+fn parse_no_color_argument(args: &[String], config: &Config) -> bool {
+    args.iter().any(|a| a == "--no-color" || a == "-C") || config.no_color.unwrap_or(false)
 }
 
-fn parse_mono_argument(args: &[String]) -> bool {
-    args.iter().any(|a| a == "--mono")
+fn parse_mono_argument(args: &[String], config: &Config) -> bool {
+    args.iter().any(|a| a == "--mono") || config.mono.unwrap_or(false)
 }
 
 fn parse_frame_argument(args: &[String]) -> bool {
     args.iter().any(|a| a == "--frame")
 }
 
-fn parse_duration_argument(args: &[String]) -> Option<f32> {
+fn parse_duration_argument(args: &[String], config: &Config) -> Option<f32> {
     for i in 0..args.len() {
         if args[i] == "--duration"
             && i + 1 < args.len()
@@ -741,23 +798,29 @@ fn parse_duration_argument(args: &[String]) -> Option<f32> {
             return Some(v);
         }
     }
+    if let Some(value) = config.duration
+        && value > 0.0
+        && value <= f32::MAX as f64
+    {
+        return Some(value as f32);
+    }
     None
 }
 
-fn parse_no_packages_argument(args: &[String]) -> bool {
+fn parse_no_packages_argument(args: &[String], config: &Config) -> bool {
     for arg in args {
         if arg == "--no-packages" || arg == "--no-pkgs" || arg == "-P" {
             return true;
         }
     }
-    false
+    config.no_packages.unwrap_or(false)
 }
 
-fn parse_no_header_argument(args: &[String]) -> bool {
-    args.iter().any(|a| a == "--no-header")
+fn parse_no_header_argument(args: &[String], config: &Config) -> bool {
+    args.iter().any(|a| a == "--no-header") || config.no_header.unwrap_or(false)
 }
 
-fn parse_seed_argument(args: &[String]) -> Option<u64> {
+fn parse_seed_argument(args: &[String], config: &Config) -> Option<u64> {
     for i in 0..args.len() {
         if args[i] == "--seed"
             && i + 1 < args.len()
@@ -770,13 +833,68 @@ fn parse_seed_argument(args: &[String]) -> Option<u64> {
             return Some(v);
         }
     }
-    None
+    config.seed
+}
+
+fn print_effective_config(config: &EffectiveConfig) {
+    println!("style = \"{}\"", animation_style_name(&config.style));
+    println!("speed = {}", format_float(config.speed));
+    if let Some(duration) = config.duration {
+        println!("duration = {}", format_float(duration));
+    }
+    println!("color_fps = {}", format_fps(config.color_fps));
+    println!("no_logo = {}", config.no_logo);
+    println!("no_packages = {}", config.no_packages);
+    println!("no_header = {}", config.no_header);
+    println!("mono = {}", config.mono);
+    println!("no_color = {}", config.no_color);
+    if let Some(seed) = config.seed {
+        println!("seed = {}", seed);
+    }
+}
+
+fn animation_style_name(style: &AnimationStyle) -> &'static str {
+    match style {
+        AnimationStyle::Wave => "wave",
+        AnimationStyle::Pulse => "pulse",
+        AnimationStyle::Neon => "neon",
+        AnimationStyle::Matrix => "matrix",
+        AnimationStyle::Fire => "fire",
+        AnimationStyle::Fall => "fall",
+        AnimationStyle::Marquee => "marquee",
+        AnimationStyle::Typing => "typing",
+        AnimationStyle::Plasma => "plasma",
+        AnimationStyle::Glow => "glow",
+        AnimationStyle::Pixel => "pixel",
+        AnimationStyle::Aurora => "aurora",
+        AnimationStyle::Glitch => "glitch",
+        AnimationStyle::PulseRings => "pulse-rings",
+        AnimationStyle::MeteorRain => "meteor-rain",
+        AnimationStyle::Lava => "lava",
+        AnimationStyle::EdgeGlow => "edge-glow",
+    }
+}
+
+fn format_float(value: f32) -> String {
+    if value.fract() == 0.0 {
+        format!("{value:.1}")
+    } else {
+        value.to_string()
+    }
+}
+
+fn format_fps(value: f32) -> String {
+    if value.fract() == 0.0 {
+        format!("{}", value as u32)
+    } else {
+        format_float(value)
+    }
 }
 
 fn print_help() {
     let styles = animation::styles::AnimationStyle::available_styles().join(", ");
     println!(
-        "neonfetch - fast colorful animated system info\n\nUsage:\n  neonfetch [options]\n\nOptions:\n  --style <name>        Animation style (default: neon; or 'random')\n  --speed <val>         Animation speed (0.1-20.0, default 1.0)\n  --color-fps <val>     Color refresh FPS (5-120, default 30)\n  --duration <sec>      Auto-exit after N seconds (animation mode)\n  --frame               Render one frame and exit (animation mode)\n  --fetch               Print info once and exit\n  --json                Print JSON array and exit\n  --mono                Render in grayscale (animations/info)\n  --no-color, -C        Disable ANSI colors (plain text)\n  --no-logo, -L         Hide ASCII logo\n  --no-packages, -P     Skip package manager detection\n  --no-header           Hide username@hostname header divider\n  --seed <u64>          Deterministic random seed for animations\n  --list-styles         List available styles\n  -h, --help            Show this help\n  -V, --version         Show version\n\nKeys (animation mode):\n  q / Esc / Ctrl+C      Quit and restore the terminal\n\nStyles:\n  {}",
+        "neonfetch - fast colorful animated system info\n\nUsage:\n  neonfetch [options]\n\nOptions:\n  --style <name>        Animation style (default: neon; or 'random')\n  --speed <val>         Animation speed (0.1-20.0, default 1.0)\n  --color-fps <val>     Color refresh FPS (5-120, default 30)\n  --duration <sec>      Auto-exit after N seconds (animation mode)\n  --frame               Render one frame and exit (animation mode)\n  --fetch               Print info once and exit\n  --json                Print JSON array and exit\n  --mono                Render in grayscale (animations/info)\n  --no-color, -C        Disable ANSI colors (plain text)\n  --no-logo, -L         Hide ASCII logo\n  --no-packages, -P     Skip package manager detection\n  --no-header           Hide username@hostname header divider\n  --seed <u64>          Deterministic random seed for animations\n  --config <path>       Load config from path\n  --no-config           Ignore config files\n  --print-config        Print effective config and exit\n  --list-styles         List available styles\n  -h, --help            Show this help\n  -V, --version         Show version\n\nConfig search:\n  --config, NEONFETCH_CONFIG, XDG_CONFIG_HOME, ~/.config/neonfetch/config.toml\n\nKeys (animation mode):\n  q / Esc / Ctrl+C      Quit and restore the terminal\n\nStyles:\n  {}",
         styles
     );
 }

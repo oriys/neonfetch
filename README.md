@@ -155,8 +155,48 @@ neonfetch --no-header
 # Deterministic animations with a fixed random seed
 neonfetch --seed 42
 
+# Load and inspect a specific config file
+neonfetch --config /path/to/config.toml --print-config
+
+# Ignore all config files
+neonfetch --no-config
+
 # Combine options
 neonfetch --style fire --speed 1.5 --color-fps 45 --no-logo
+```
+
+### Configuration
+
+Neonfetch 可以从配置文件读取默认偏好。命令行参数始终优先于配置文件；例如配置里写了 `style = "matrix"`，运行 `neonfetch --style fire` 仍会使用 `fire`。
+
+配置文件查找顺序：
+
+1. `--config <path>` 或 `--config=<path>`
+2. `NEONFETCH_CONFIG`
+3. `$XDG_CONFIG_HOME/neonfetch/config.toml`
+4. `~/.config/neonfetch/config.toml`
+
+文件不存在时会当作空配置处理。配置文件解析失败时，neonfetch 会向 stderr 打印一行警告并继续使用内置默认值和命令行参数。
+
+```toml
+style = "matrix"
+speed = 2.0
+duration = 3.0
+color_fps = 60
+no_logo = false
+no_packages = false
+no_header = false
+mono = false
+no_color = false
+seed = 42
+```
+
+```bash
+# Print the merged effective configuration and exit
+neonfetch --print-config
+
+# Try a one-off config file
+neonfetch --config /tmp/neonfetch.toml --print-config
 ```
 
 ### Examples
@@ -243,6 +283,7 @@ cargo test
 ```
 src/
 ├── main.rs              # CLI parsing, frame loop, terminal guard, renderers
+├── config.rs            # Config file loading and parsing
 ├── animation/           # Animation styles and effects
 │   ├── mod.rs          # Animation module exports
 │   ├── styles.rs       # Style definitions and per-cell color functions
