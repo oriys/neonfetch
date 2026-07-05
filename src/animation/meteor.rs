@@ -1,4 +1,4 @@
-use super::styles::hsv_to_rgb;
+use super::{palette::Palette, styles::hsv_to_rgb};
 
 // Meteor rain: bright streaks fall diagonally across the text, each with a
 // fading tail, over a dim night-sky base so the layout stays readable.
@@ -87,6 +87,80 @@ pub fn calculate_meteor_color_at(
     let sat = 0.65 + best_intensity * 0.25;
     let val = 0.25 + best_intensity * 0.75;
     hsv_to_rgb(best_hue, sat.min(0.95), val.min(1.0))
+}
+
+pub fn calculate_meteor_color_with_palette(
+    time: f32,
+    row: usize,
+    col: usize,
+    term_w: usize,
+    term_h: usize,
+    palette: &Palette,
+) -> (u8, u8, u8) {
+    if palette.is_default() {
+        return calculate_meteor_color_at(time, row, col, term_w, term_h);
+    }
+    if term_w == 0 || term_h == 0 {
+        return (0, 0, 0);
+    }
+    let w = term_w as f32;
+    let h = term_h as f32;
+
+    let mut best_intensity = 0.0f32;
+    let mut best_hue = 0.0f32;
+    let mut is_head = false;
+
+    for i in 0..METEOR_COUNT {
+        let seed = (i as u32).wrapping_mul(0x9E3779B9).wrapping_add(1);
+        let r1 = hash01(seed);
+        let r2 = hash01(seed ^ 0x85EBCA6B);
+        let r3 = hash01(seed ^ 0xC2B2AE35);
+
+        let fall_speed = 12.0 + r1 * 10.0;
+        let slope = 0.8 + r2 * 0.9;
+        let trail = 6.0 + r3 * 8.0;
+        let cycle_len = h + trail + 4.0;
+        let progress = time * fall_speed + r2 * cycle_len;
+        let cycle = (progress / cycle_len) as u32;
+        let head_row = progress % cycle_len;
+
+        let x0 = hash01(seed ^ cycle.wrapping_mul(0x27220A95)) * (w + h * slope) - h * slope;
+
+        let u = head_row - row as f32;
+        if !(0.0..trail).contains(&u) {
+            continue;
+        }
+        let col_on_path = x0 + row as f32 * slope;
+        let dc = col as f32 - col_on_path;
+        if dc.abs() > 0.7 {
+            continue;
+        }
+        let intensity = (1.0 - u / trail).powf(1.5);
+        if intensity > best_intensity {
+            best_intensity = intensity;
+            best_hue = (20.0 + r1 * 240.0 + time * 10.0) % 360.0;
+            is_head = u < 1.2;
+        }
+    }
+
+    if best_intensity <= 0.02 {
+        let cell_hash =
+            hash01((row as u32).wrapping_mul(0x9E3779B9) ^ (col as u32).wrapping_mul(0x85EBCA6B));
+        let twinkle = if cell_hash > 0.97 {
+            ((time * 2.0 + cell_hash * 40.0).sin() * 0.5 + 0.5) * 0.25
+        } else {
+            0.0
+        };
+        let t = (225.0 / 360.0 + cell_hash * 0.08).rem_euclid(1.0);
+        return palette.sample_tinted(t, 0.30, 0.16 + twinkle);
+    }
+    if is_head {
+        let v = 0.85 + best_intensity * 0.15;
+        return palette.sample_tinted(best_hue / 360.0, 0.15, v.min(1.0));
+    }
+    let sat = 0.65 + best_intensity * 0.25;
+    let val = 0.25 + best_intensity * 0.75;
+    palette.sample_tinted(best_hue / 360.0, sat.min(0.95), val.min(1.0))
 }
 
 #[cfg(test)]

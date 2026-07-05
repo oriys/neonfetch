@@ -1,4 +1,6 @@
 // Simple XOR-shift style PRNG producing a float in 0..1 (deterministic per column)
+use crate::animation::palette::Palette;
+
 fn prng01_from_u32(mut x: u32) -> f32 {
     x ^= x << 13;
     x ^= x >> 17;
@@ -38,6 +40,45 @@ pub fn calculate_matrix_color_at(
     let g = (255.0 * intensity * flicker).clamp(0.0, 255.0) as u8;
     let o = (g as f32 * 0.12) as u8;
     (o, g, o)
+}
+
+pub fn calculate_matrix_color_with_palette(
+    time: f32,
+    row: usize,
+    col: usize,
+    term_height: usize,
+    palette: &Palette,
+) -> (u8, u8, u8) {
+    if palette.is_default() {
+        return calculate_matrix_color_at(time, row, col, term_height);
+    }
+
+    let seed = (col as u32)
+        .wrapping_mul(747796405u32)
+        .wrapping_add(2891336453u32);
+    let r1 = prng01_from_u32(seed);
+    let r2 = prng01_from_u32(seed.wrapping_mul(1664525).wrapping_add(1013904223));
+    let r3 = prng01_from_u32(seed ^ 0x9E3779B9);
+
+    let speed = 0.6 + r1 * 1.0;
+    let phase = r2 * term_height as f32;
+    let trail_len = 8.0 + r3 * 16.0;
+    let cycle = term_height as f32 + trail_len + 5.0;
+    let head = (time * speed + phase) % cycle;
+    let y = row as f32;
+    let intensity = matrix_trail_intensity(y, head, trail_len);
+
+    let flicker = if (((time * 30.0) as i32 + col as i32) % 47) == 0 {
+        1.25
+    } else {
+        1.0
+    };
+    if intensity == 0.0 {
+        return (0, 0, 0);
+    }
+    let height = term_height.max(1) as f32;
+    let t = (r2 + time * 0.08 + row as f32 / height * 0.18).rem_euclid(1.0);
+    palette.sample_tinted(t, 0.95, (intensity * flicker).clamp(0.0, 1.0))
 }
 
 fn matrix_trail_intensity(y: f32, head: f32, trail_len: f32) -> f32 {

@@ -1,5 +1,7 @@
 use std::f32;
 
+use super::palette::Palette;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AnimationStyle {
     Wave,
@@ -243,6 +245,106 @@ pub fn calculate_color(style: &AnimationStyle, time: f32, char_pos: usize) -> (u
         AnimationStyle::MeteorRain => (180, 180, 180), // Actual color generated in meteor-rain renderer
         AnimationStyle::Lava => (255, 80, 20),         // Actual color generated in lava module
         AnimationStyle::EdgeGlow => (200, 200, 200), // Actual color adjusted in renderer edge pass
+    }
+}
+
+pub fn calculate_color_with_palette(
+    style: &AnimationStyle,
+    time: f32,
+    char_pos: usize,
+    palette: &Palette,
+) -> (u8, u8, u8) {
+    if palette.is_default() {
+        return calculate_color(style, time, char_pos);
+    }
+
+    match style {
+        AnimationStyle::Wave => {
+            let spatial = char_pos as f32 * 0.35;
+            let phase_primary = spatial - time * 3.0;
+            let phase_secondary = char_pos as f32 * 0.10 - time * 0.7;
+            let w = phase_primary.sin();
+            let w_norm = w * 0.5 + 0.5;
+            let mut v = 0.35 + w_norm.powf(1.2) * 0.65;
+            let env = (phase_secondary.sin() * 0.5 + 0.5) * 0.25 + 0.75;
+            v = (v * env).min(1.0);
+            let hue = (time * 8.0) % 360.0;
+            palette.sample_tinted(hue / 360.0, 0.65, v)
+        }
+        AnimationStyle::Pulse => {
+            let base_hue = (time * 25.0) % 360.0;
+            let hue_ripple = ((char_pos as f32) * 0.035 + time * 0.6).sin() * 6.0;
+            let hue = (base_hue + hue_ripple + 360.0) % 360.0;
+            let phase = time * 2.2 - (char_pos as f32) * 0.10;
+            let wave = phase.sin();
+            let wave_norm = (wave * 0.5 + 0.5).powf(1.3);
+            let val = 0.25 + wave_norm * 0.75;
+            let sat = 0.55 + wave_norm * 0.35;
+            let breath = (time * 0.9).sin() * 0.04 + 0.96;
+            let (mut r, mut g, mut b) =
+                palette.sample_tinted(hue / 360.0, sat, (val * breath).min(1.0));
+            if val > 0.8 {
+                let glow_mix = ((val - 0.8) / 0.2).clamp(0.0, 1.0) * 0.18;
+                let gr = 230.0;
+                r = (r as f32 * (1.0 - glow_mix) + gr * glow_mix) as u8;
+                g = (g as f32 * (1.0 - glow_mix) + gr * glow_mix) as u8;
+                b = (b as f32 * (1.0 - glow_mix) + gr * glow_mix) as u8;
+            }
+            (r, g, b)
+        }
+        AnimationStyle::Neon => {
+            let base_hue = (time * 20.0) % 360.0;
+            let span = 20.0_f32;
+            let direction = (time * 0.9).sin();
+            let centered = (((char_pos as f32) * 0.08).sin() * 0.5 + 0.5) - 0.5;
+            let offset = centered * direction * span;
+            let hue = (base_hue + offset + 360.0) % 360.0;
+            let breath = (time * 1.2).sin() * 0.04 + 1.0;
+            let sat = 0.72;
+            let val = 0.82 * breath;
+            let (mut r, mut g, mut b) = palette.sample_tinted(hue / 360.0, sat, val);
+            let mix = 0.05;
+            r = ((r as f32 * (1.0 - mix)) + 128.0 * mix) as u8;
+            g = ((g as f32 * (1.0 - mix)) + 128.0 * mix) as u8;
+            b = ((b as f32 * (1.0 - mix)) + 128.0 * mix) as u8;
+            (r, g, b)
+        }
+        AnimationStyle::Glow => {
+            let base_hue = (time * 12.0) % 360.0;
+            let breath = (time * 0.9).sin() * 0.20 + 0.80;
+            let n = ((char_pos as u32).wrapping_mul(2654435761) ^ 0x9e3779b9) as f32;
+            let noise = ((n.sin() * 43_758.547).fract() - 0.5) * 0.08;
+            let v = (breath + noise).clamp(0.05, 1.0);
+            let sat = 0.55 + (breath - 0.8) * 0.3;
+            palette.sample_tinted(base_hue / 360.0, sat.clamp(0.3, 0.95), v)
+        }
+        AnimationStyle::Pixel => {
+            const PALETTE_LEN: usize = 8;
+            let base = char_pos as f32 * 0.37 + time * 0.8;
+            let hashed = (base * 12.9898).sin() * 43_758.547;
+            let mut frac = hashed - hashed.floor();
+            if frac < 0.0 {
+                frac += 1.0;
+            }
+            let mut idx = (frac * PALETTE_LEN as f32) as usize;
+            if idx >= PALETTE_LEN {
+                idx = PALETTE_LEN - 1;
+            }
+            let wobble = ((time * 2.7) + (char_pos as f32) * 0.45).sin() * 0.5 + 0.5;
+            let shade = 0.72 + wobble * 0.4;
+            let (mut r, mut g, mut b) =
+                palette.sample_tinted(idx as f32 / PALETTE_LEN as f32, 1.0, shade.min(1.0));
+            let checker_seed =
+                ((char_pos as u32).wrapping_mul(1664525) ^ 0x9e3779b9 ^ (char_pos as u32 >> 3))
+                    & 0x1;
+            if checker_seed == 1 {
+                r = (r as f32 * 0.88).round().clamp(0.0, 255.0) as u8;
+                g = (g as f32 * 0.88).round().clamp(0.0, 255.0) as u8;
+                b = (b as f32 * 0.88).round().clamp(0.0, 255.0) as u8;
+            }
+            (r, g, b)
+        }
+        _ => calculate_color(style, time, char_pos),
     }
 }
 

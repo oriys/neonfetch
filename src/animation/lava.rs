@@ -1,4 +1,4 @@
-use crate::animation::styles::hsv_to_rgb;
+use crate::animation::{palette::Palette, styles::hsv_to_rgb};
 
 // Lava effect: layered moving pseudo-noise (sum of sines) mapped to warm palette.
 // Avoids external noise libraries; fast enough for per-cell each frame.
@@ -42,4 +42,42 @@ pub fn calculate_lava_color_at(
     let flicker = (t * 3.5 + x * 10.0).sin() * 0.04 + 0.96;
     let val = (0.25 + heat * 0.9) * flicker;
     hsv_to_rgb(hue % 360.0, sat.clamp(0.4, 1.0), val.clamp(0.05, 1.0))
+}
+
+pub fn calculate_lava_color_with_palette(
+    time: f32,
+    row: usize,
+    col: usize,
+    term_w: usize,
+    term_h: usize,
+    speed: f32,
+    palette: &Palette,
+) -> (u8, u8, u8) {
+    if palette.is_default() {
+        return calculate_lava_color_at(time, row, col, term_w, term_h, speed);
+    }
+    if term_w == 0 || term_h == 0 {
+        return (0, 0, 0);
+    }
+    let t = time * 0.35 * speed.max(0.05);
+    let x = col as f32 / term_w as f32;
+    let y = row as f32 / term_h as f32;
+    let warp1 = ((x * 6.3 + t * 1.9).sin() + (y * 7.1 - t * 1.3).sin()) * 0.15;
+    let warp2 = ((x * 4.2 - t * 0.8).sin() + (y * 5.7 + t * 1.6).sin()) * 0.12;
+    let nx = x + warp1;
+    let ny = y + warp2;
+    let mut v = 0.0;
+    let mut amp = 0.6;
+    let mut freq = 3.5;
+    for _ in 0..4 {
+        v += ((nx * freq + t * 1.2).sin() * (ny * freq - t * 0.9).cos()) * amp;
+        amp *= 0.55;
+        freq *= 1.9;
+    }
+    let v_norm = (v * 0.5 + 0.5).clamp(0.0, 1.0);
+    let heat = v_norm.powf(1.4);
+    let sat = 0.85 - heat * 0.25;
+    let flicker = (t * 3.5 + x * 10.0).sin() * 0.04 + 0.96;
+    let val = (0.25 + heat * 0.9) * flicker;
+    palette.sample_tinted(heat, sat.clamp(0.4, 1.0), val.clamp(0.05, 1.0))
 }

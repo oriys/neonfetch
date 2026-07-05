@@ -1,3 +1,5 @@
+use crate::animation::palette::Palette;
+
 /// Calculate the base fire color for a single cell (without spark overlay).
 pub fn calculate_fire_color_at(
     time: f32,
@@ -37,4 +39,30 @@ pub fn calculate_fire_color_at(
         (r as u8, g as u8, b as u8)
     };
     (r, g, b)
+}
+
+pub fn calculate_fire_color_with_palette(
+    time: f32,
+    row: usize,
+    col: usize,
+    term_height: usize,
+    term_width: usize,
+    palette: &Palette,
+) -> (u8, u8, u8) {
+    if palette.is_default() {
+        return calculate_fire_color_at(time, row, col, term_height, term_width);
+    }
+    if term_height == 0 {
+        return palette.sample_tinted(0.0, 1.0, 1.0);
+    }
+    let h = 1.0 - (row as f32 / term_height as f32);
+    let seed = (col as u32).wrapping_mul(1103515245).wrapping_add(12345);
+    let wind = (((seed as f32) * 0.000001).sin() * 0.5 + 0.5) * 0.6 + 0.4;
+    let adv = time * (0.9 + (col as f32 * 0.05).sin() * 0.2);
+    let n1 = (row as f32 * 0.18 + adv).sin() * 0.5 + 0.5;
+    let n2 = (col as f32 * 0.12 + adv * wind).cos() * 0.5 + 0.5;
+    let n = (n1 * 0.6 + n2 * 0.4).clamp(0.0, 1.0);
+    let base = h.powf(0.6);
+    let intensity = (0.25 + 0.75 * base * n).clamp(0.0, 1.0);
+    palette.sample_tinted(intensity, 1.0, intensity)
 }
