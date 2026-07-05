@@ -1,11 +1,147 @@
 #[test]
 fn runs_main_with_fetch() {
-    // Just ensure binary runs with --fetch quickly without panic.
-    // We invoke main logic through spawning a process to avoid infinite loop.
-    use std::process::Command;
-    let status = Command::new(env!("CARGO_BIN_EXE_neonfetch"))
+    let output = neonfetch_command()
         .arg("--fetch")
-        .status()
+        .output()
         .expect("failed to run neonfetch binary");
-    assert!(status.success());
+    assert!(output.status.success());
+}
+
+#[test]
+fn logo_file_output_contains_custom_art() {
+    let path = temp_logo_path("custom");
+    std::fs::write(&path, "CYO_LOGO\nNEON_ART\n").expect("failed to write logo file");
+
+    let output = neonfetch_command()
+        .arg(format!("--logo-file={}", path.display()))
+        .arg("--fetch")
+        .arg("--no-header")
+        .arg("--no-packages")
+        .output()
+        .expect("failed to run neonfetch binary");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+    assert!(stdout.contains("CYO_LOGO"));
+    assert!(stdout.contains("NEON_ART"));
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn missing_logo_file_warns_and_uses_builtin_logo() {
+    let path = temp_logo_path("missing");
+
+    let output = neonfetch_command()
+        .arg("--logo-file")
+        .arg(&path)
+        .arg("--fetch")
+        .arg("--no-header")
+        .arg("--no-packages")
+        .output()
+        .expect("failed to run neonfetch binary");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let os_line = stdout
+        .lines()
+        .find(|line| line.contains("OS:"))
+        .expect("expected OS line in stdout");
+
+    assert!(output.status.success());
+    assert_eq!(stderr.lines().count(), 1);
+    assert!(stderr.contains("warning: could not read logo file"));
+    assert!(stderr.contains("using built-in logo"));
+    assert!(!os_line.starts_with("OS:"));
+}
+
+#[test]
+fn no_logo_takes_precedence_over_logo_file() {
+    let path = temp_logo_path("no-logo-precedence");
+
+    let output = neonfetch_command()
+        .arg("--no-logo")
+        .arg("--logo-file")
+        .arg(&path)
+        .arg("--fetch")
+        .arg("--no-header")
+        .arg("--no-packages")
+        .output()
+        .expect("failed to run neonfetch binary");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let first_line = stdout.lines().next().expect("expected stdout line");
+
+    assert!(output.status.success());
+    assert!(stderr.is_empty());
+    assert!(first_line.starts_with("OS:"));
+}
+
+#[test]
+fn blank_logo_file_behaves_like_no_logo() {
+    let path = temp_logo_path("blank");
+    std::fs::write(&path, "   \n\t\r\n").expect("failed to write logo file");
+
+    let output = neonfetch_command()
+        .arg("--logo-file")
+        .arg(&path)
+        .arg("--fetch")
+        .arg("--no-header")
+        .arg("--no-packages")
+        .output()
+        .expect("failed to run neonfetch binary");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let first_line = stdout.lines().next().expect("expected stdout line");
+
+    assert!(output.status.success());
+    assert!(first_line.starts_with("OS:"));
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn logo_file_normalizes_crlf_tabs_and_ansi_sequences() {
+    let path = temp_logo_path("normalize");
+    std::fs::write(&path, "\x1b[31mA\tB\x1b[0m\r\nC\tD\n").expect("failed to write logo file");
+
+    let output = neonfetch_command()
+        .arg("--logo-file")
+        .arg(&path)
+        .arg("--fetch")
+        .arg("--no-header")
+        .arg("--no-packages")
+        .output()
+        .expect("failed to run neonfetch binary");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(output.status.success());
+    assert!(stdout.contains("A    B"));
+    assert!(stdout.contains("C    D"));
+    assert!(!stdout.contains('\r'));
+    assert!(!stdout.contains('\t'));
+    assert!(!stdout.contains("\x1b[31m"));
+
+    let _ = std::fs::remove_file(path);
+}
+
+fn neonfetch_command() -> std::process::Command {
+    std::process::Command::new(env!("CARGO_BIN_EXE_neonfetch"))
+}
+
+fn temp_logo_path(name: &str) -> std::path::PathBuf {
+    let mut path = std::env::temp_dir();
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system time before unix epoch")
+        .as_nanos();
+    path.push(format!(
+        "neonfetch-{}-{}-{}.txt",
+        name,
+        std::process::id(),
+        nanos
+    ));
+    path
 }
