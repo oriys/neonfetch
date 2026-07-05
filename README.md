@@ -128,8 +128,8 @@ Pseudo-styles:
 
 | Style    | Description                                                |
 | -------- | ---------------------------------------------------------- |
-| `random` | Pick a random real style each run; honors `--seed`         |
-| `daily`  | Pick one real style from the local date, stable all day    |
+| `random` | Pick a random showcase style each run; honors `--seed`     |
+| `daily`  | Pick one showcase style from the local date, stable all day |
 
 #### Shell Startup
 

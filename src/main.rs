@@ -32,6 +32,23 @@ use util::framebuf::FrameBuf;
 const MAX_LOGO_LINES: usize = 60;
 const MAX_LOGO_COLUMNS: usize = 120;
 const TAB_WIDTH: usize = 4;
+const SHOWCASE_STYLE_POOL: &[AnimationStyle] = &[
+    AnimationStyle::Neon,
+    AnimationStyle::Wave,
+    AnimationStyle::Pulse,
+    AnimationStyle::Matrix,
+    AnimationStyle::Fire,
+    AnimationStyle::Fall,
+    AnimationStyle::Marquee,
+    AnimationStyle::Typing,
+    AnimationStyle::Plasma,
+    AnimationStyle::Glow,
+    AnimationStyle::Aurora,
+    AnimationStyle::PulseRings,
+    AnimationStyle::MeteorRain,
+    AnimationStyle::Lava,
+    AnimationStyle::EdgeGlow,
+];
 
 fn main() -> io::Result<()> {
     let args: Vec<String> = env::args().collect();
@@ -805,7 +822,7 @@ fn resolve_palette_argument(name: &str) -> &'static Palette {
 }
 
 fn pick_random_style(seed: Option<u64>) -> AnimationStyle {
-    let styles = AnimationStyle::all();
+    let styles = SHOWCASE_STYLE_POOL;
     let idx = if let Some(seed) = seed {
         let mut rng = fastrand::Rng::with_seed(seed);
         rng.usize(..styles.len())
@@ -816,7 +833,7 @@ fn pick_random_style(seed: Option<u64>) -> AnimationStyle {
 }
 
 fn pick_daily_style_for_date(yyyymmdd: u32) -> AnimationStyle {
-    let styles = AnimationStyle::all();
+    let styles = SHOWCASE_STYLE_POOL;
     let idx = daily_style_index(yyyymmdd, styles.len());
     styles[idx]
 }
@@ -1192,7 +1209,7 @@ fn print_help() {
     let distros = system::supported_distro_ids().join(", ");
     let palettes = animation::available_palette_names().join(", ");
     println!(
-        "neonfetch - fast colorful animated system info\n\nUsage:\n  neonfetch [options]\n\nOptions:\n  --style <name>        Animation style (default: neon; real style, random, or daily)\n  --palette <name>      Color palette (default: default)\n  --speed <val>         Animation speed (0.1-20.0, default 1.0)\n  --color-fps <val>     Color refresh FPS (5-120, default 30)\n  --duration <sec>      Auto-exit after N seconds (animation mode)\n  --frame               Render one frame and exit (animation mode)\n  --fetch               Print info once and exit\n  --json                Print keyed JSON object and exit\n  --show <keys>         Show only comma-separated info fields in that order\n  --hide <keys>         Hide comma-separated info fields\n  --list-fields         List available info field keys\n  --mono                Render in grayscale (animations/info)\n  --no-color, -C        Disable ANSI colors (plain text)\n  --logo-file <path>    Use a UTF-8 text file as the ASCII logo\n  --no-logo, -L         Hide ASCII logo\n  --distro <id>         Force a distro logo on any platform\n  --no-packages, -P     Hide packages field and skip package detection\n  --no-header           Hide username@hostname header divider\n  --seed <u64>          Deterministic random seed for animations and --style random\n  --config <path>       Load config from path\n  --no-config           Ignore config files\n  --print-config        Print effective config and exit\n  --list-styles         List available styles\n  --list-palettes       List available palettes\n  -h, --help            Show this help\n  -V, --version         Show version\n\nConfig search:\n  --config, NEONFETCH_CONFIG, XDG_CONFIG_HOME, ~/.config/neonfetch/config.toml\n\nInfo fields:\n  {}\n\nKeys (animation mode):\n  q / Esc / Ctrl+C      Quit and restore the terminal\n\nDistros:\n  {}\n\nStyles:\n  {}\n\nPalettes:\n  {}\n\nPseudo-styles:\n  random                Pick a random real style each run; honors --seed\n  daily                 Pick one real style from the local date",
+        "neonfetch - fast colorful animated system info\n\nUsage:\n  neonfetch [options]\n\nOptions:\n  --style <name>        Animation style (default: neon; real style, random, or daily)\n  --palette <name>      Color palette (default: default)\n  --speed <val>         Animation speed (0.1-20.0, default 1.0)\n  --color-fps <val>     Color refresh FPS (5-120, default 30)\n  --duration <sec>      Auto-exit after N seconds (animation mode)\n  --frame               Render one frame and exit (animation mode)\n  --fetch               Print info once and exit\n  --json                Print keyed JSON object and exit\n  --show <keys>         Show only comma-separated info fields in that order\n  --hide <keys>         Hide comma-separated info fields\n  --list-fields         List available info field keys\n  --mono                Render in grayscale (animations/info)\n  --no-color, -C        Disable ANSI colors (plain text)\n  --logo-file <path>    Use a UTF-8 text file as the ASCII logo\n  --no-logo, -L         Hide ASCII logo\n  --distro <id>         Force a distro logo on any platform\n  --no-packages, -P     Hide packages field and skip package detection\n  --no-header           Hide username@hostname header divider\n  --seed <u64>          Deterministic random seed for animations and --style random\n  --config <path>       Load config from path\n  --no-config           Ignore config files\n  --print-config        Print effective config and exit\n  --list-styles         List available styles\n  --list-palettes       List available palettes\n  -h, --help            Show this help\n  -V, --version         Show version\n\nConfig search:\n  --config, NEONFETCH_CONFIG, XDG_CONFIG_HOME, ~/.config/neonfetch/config.toml\n\nInfo fields:\n  {}\n\nKeys (animation mode):\n  q / Esc / Ctrl+C      Quit and restore the terminal\n\nDistros:\n  {}\n\nStyles:\n  {}\n\nPalettes:\n  {}\n\nPseudo-styles:\n  random                Pick a random showcase style each run; honors --seed\n  daily                 Pick one showcase style from the local date",
         INFO_FIELD_KEYS.join(", "),
         distros,
         styles,
@@ -1204,8 +1221,8 @@ fn print_style_list() {
     for name in animation::styles::AnimationStyle::available_styles() {
         println!("{}", name);
     }
-    println!("random (pseudo): pick a random real style each run; honors --seed");
-    println!("daily (pseudo): pick one real style from the local date");
+    println!("random (pseudo): pick a random showcase style each run; honors --seed");
+    println!("daily (pseudo): pick one showcase style from the local date");
 }
 
 fn print_version() {
@@ -1230,6 +1247,24 @@ mod tests {
     #[test]
     fn seeded_random_style_is_deterministic() {
         assert_eq!(pick_random_style(Some(7)), pick_random_style(Some(7)));
+    }
+
+    #[test]
+    fn seeded_random_style_uses_showcase_pool() {
+        for seed in 0..256 {
+            let style = pick_random_style(Some(seed));
+            assert!(SHOWCASE_STYLE_POOL.contains(&style));
+        }
+    }
+
+    #[test]
+    fn showcase_style_pool_excludes_noisy_styles() {
+        assert!(!SHOWCASE_STYLE_POOL.contains(&AnimationStyle::Pixel));
+        assert!(!SHOWCASE_STYLE_POOL.contains(&AnimationStyle::Glitch));
+
+        for style in SHOWCASE_STYLE_POOL {
+            assert!(AnimationStyle::all().contains(style));
+        }
     }
 
     #[test]

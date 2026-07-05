@@ -197,41 +197,9 @@ pub fn calculate_color(style: &AnimationStyle, time: f32, char_pos: usize) -> (u
             hsv_to_rgb(base_hue, sat.clamp(0.3, 0.95), v)
         }
         AnimationStyle::Pixel => {
-            const PALETTE: [(u8, u8, u8); 8] = [
-                (0x1a, 0x1c, 0x2c),
-                (0x5d, 0x27, 0x5d),
-                (0xb1, 0x3e, 0x53),
-                (0xef, 0x7d, 0x57),
-                (0xff, 0xcd, 0x75),
-                (0xa7, 0xf0, 0x70),
-                (0x38, 0xb7, 0x64),
-                (0x2c, 0xd9, 0x58),
-            ];
-            let base = char_pos as f32 * 0.37 + time * 0.8;
-            let hashed = (base * 12.9898).sin() * 43_758.547;
-            let mut frac = hashed - hashed.floor();
-            if frac < 0.0 {
-                frac += 1.0;
-            }
-            let mut idx = (frac * PALETTE.len() as f32) as usize;
-            if idx >= PALETTE.len() {
-                idx = PALETTE.len() - 1;
-            }
-            let (pr, pg, pb) = PALETTE[idx];
-            let wobble = ((time * 2.7) + (char_pos as f32) * 0.45).sin() * 0.5 + 0.5;
-            let shade = 0.72 + wobble * 0.4;
-            let mut r = (pr as f32 * shade).clamp(0.0, 255.0) as u8;
-            let mut g = (pg as f32 * shade).clamp(0.0, 255.0) as u8;
-            let mut b = (pb as f32 * shade).clamp(0.0, 255.0) as u8;
-            let checker_seed =
-                ((char_pos as u32).wrapping_mul(1664525) ^ 0x9e3779b9 ^ (char_pos as u32 >> 3))
-                    & 0x1;
-            if checker_seed == 1 {
-                r = (r as f32 * 0.88).round().clamp(0.0, 255.0) as u8;
-                g = (g as f32 * 0.88).round().clamp(0.0, 255.0) as u8;
-                b = (b as f32 * 0.88).round().clamp(0.0, 255.0) as u8;
-            }
-            (r, g, b)
+            let block = pixel_block(char_pos);
+            let rgb = PIXEL_PALETTE[pixel_palette_slot(block, PIXEL_PALETTE.len())];
+            soften_pixel_rgb(scale_rgb(rgb, pixel_value(time, block)))
         }
         AnimationStyle::Matrix => (0, 255, 0), // Actual color generated in matrix::calculate_matrix_color_at
         AnimationStyle::Fire => (255, 80, 0), // Actual color generated in fire::calculate_fire_color_at
@@ -319,38 +287,67 @@ pub fn calculate_color_with_palette(
             palette.sample_tinted(base_hue / 360.0, sat.clamp(0.3, 0.95), v)
         }
         AnimationStyle::Pixel => {
-            const PALETTE_LEN: usize = 8;
-            let base = char_pos as f32 * 0.37 + time * 0.8;
-            let hashed = (base * 12.9898).sin() * 43_758.547;
-            let mut frac = hashed - hashed.floor();
-            if frac < 0.0 {
-                frac += 1.0;
-            }
-            let mut idx = (frac * PALETTE_LEN as f32) as usize;
-            if idx >= PALETTE_LEN {
-                idx = PALETTE_LEN - 1;
-            }
-            let wobble = ((time * 2.7) + (char_pos as f32) * 0.45).sin() * 0.5 + 0.5;
-            let shade = 0.72 + wobble * 0.4;
-            let (mut r, mut g, mut b) =
-                palette.sample_tinted(idx as f32 / PALETTE_LEN as f32, 1.0, shade.min(1.0));
-            let checker_seed =
-                ((char_pos as u32).wrapping_mul(1664525) ^ 0x9e3779b9 ^ (char_pos as u32 >> 3))
-                    & 0x1;
-            if checker_seed == 1 {
-                r = (r as f32 * 0.88).round().clamp(0.0, 255.0) as u8;
-                g = (g as f32 * 0.88).round().clamp(0.0, 255.0) as u8;
-                b = (b as f32 * 0.88).round().clamp(0.0, 255.0) as u8;
-            }
-            (r, g, b)
+            let block = pixel_block(char_pos);
+            let slot = pixel_palette_slot(block, PIXEL_PALETTE.len());
+            let t = (slot as f32 + pixel_hash(block) as f32 / u32::MAX as f32 * 0.35)
+                / PIXEL_PALETTE.len() as f32;
+            palette.sample_tinted(t, 0.52, pixel_value(time, block))
         }
         _ => calculate_color(style, time, char_pos),
     }
 }
 
+const PIXEL_BLOCK_WIDTH: usize = 3;
+const PIXEL_PALETTE: [(u8, u8, u8); 6] = [
+    (125, 211, 252),
+    (134, 239, 172),
+    (190, 242, 100),
+    (253, 186, 116),
+    (244, 114, 182),
+    (196, 181, 253),
+];
+
+fn pixel_block(char_pos: usize) -> usize {
+    char_pos / PIXEL_BLOCK_WIDTH
+}
+
+fn pixel_hash(block: usize) -> u32 {
+    let mut x = block as u32;
+    x ^= x >> 16;
+    x = x.wrapping_mul(0x7feb_352d);
+    x ^= x >> 15;
+    x = x.wrapping_mul(0x846c_a68b);
+    x ^ (x >> 16)
+}
+
+fn pixel_palette_slot(block: usize, len: usize) -> usize {
+    pixel_hash(block) as usize % len
+}
+
+fn pixel_value(time: f32, block: usize) -> f32 {
+    let wave = (time * 1.8 + block as f32 * 0.34).sin() * 0.5 + 0.5;
+    0.78 + wave * 0.18
+}
+
+fn scale_rgb((r, g, b): (u8, u8, u8), value: f32) -> (u8, u8, u8) {
+    let scale = |channel: u8| (channel as f32 * value).round().clamp(0.0, 255.0) as u8;
+    (scale(r), scale(g), scale(b))
+}
+
+fn soften_pixel_rgb((r, g, b): (u8, u8, u8)) -> (u8, u8, u8) {
+    let mix = |channel: u8| {
+        (channel as f32 * 0.88 + 226.0 * 0.12)
+            .round()
+            .clamp(0.0, 255.0) as u8
+    };
+    (mix(r), mix(g), mix(b))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::AnimationStyle;
+    use std::cmp;
+
+    use super::{AnimationStyle, calculate_color};
 
     #[test]
     fn all_styles_have_parseable_canonical_names() {
@@ -365,6 +362,33 @@ mod tests {
                 *style,
                 "{} should parse back to its style",
                 style.canonical_name()
+            );
+        }
+    }
+
+    #[test]
+    fn pixel_style_groups_cells_and_stays_readable() {
+        let first = calculate_color(&AnimationStyle::Pixel, 1.25, 0);
+        assert_eq!(first, calculate_color(&AnimationStyle::Pixel, 1.25, 1));
+        assert_eq!(first, calculate_color(&AnimationStyle::Pixel, 1.25, 2));
+
+        for pos in 0..96 {
+            let (r, g, b) = calculate_color(&AnimationStyle::Pixel, 1.25, pos);
+            let luma = 0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32;
+            let max = cmp::max(r, cmp::max(g, b));
+            let min = cmp::min(r, cmp::min(g, b));
+
+            assert!(
+                luma >= 105.0,
+                "pixel color is too dim at {}: {:?}",
+                pos,
+                (r, g, b)
+            );
+            assert!(
+                max - min <= 150,
+                "pixel color is too saturated at {}: {:?}",
+                pos,
+                (r, g, b)
             );
         }
     }
