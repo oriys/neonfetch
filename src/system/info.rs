@@ -885,7 +885,6 @@ fn flatten_info_lines(
         if suppress_logo_header_divider && field.key == "header" {
             if let Some(header) = field.line.lines().next() {
                 lines.push(header.to_string());
-                lines.push(String::new());
             }
         } else {
             lines.extend(field.line.lines().map(str::to_string));

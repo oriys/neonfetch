@@ -144,6 +144,17 @@ fn logo_output_suppresses_header_divider_line() {
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(!stdout.contains("-------"));
+
+    let lines: Vec<&str> = stdout.lines().collect();
+    let header_index = lines
+        .iter()
+        .position(|line| line.contains('@'))
+        .expect("expected header line");
+    let os_index = lines
+        .iter()
+        .position(|line| line.contains("OS:"))
+        .expect("expected OS line");
+    assert_eq!(os_index, header_index + 1);
 }
 
 #[test]
