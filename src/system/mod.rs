@@ -6,7 +6,10 @@ mod logo_linux;
 #[cfg(target_os = "macos")]
 mod logo_macos;
 
-pub use info::generate_system_info;
+pub use info::{
+    INFO_FIELD_KEYS, InfoFieldSelection, SystemInfoOptions, generate_system_info,
+    generate_system_info_json, info_field_key,
+};
 
 #[cfg(target_os = "macos")]
 pub fn ascii_logo() -> Vec<&'static str> {
