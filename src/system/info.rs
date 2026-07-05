@@ -825,10 +825,6 @@ pub fn generate_system_info_fields(options: &SystemInfoOptions) -> Vec<SystemInf
 
 pub fn generate_system_info(options: &SystemInfoOptions) -> Vec<String> {
     let fields = generate_system_info_fields(options);
-    let info_lines: Vec<String> = fields
-        .iter()
-        .flat_map(|field| field.line.lines().map(str::to_string))
-        .collect();
 
     let mut logo_lines: Vec<String> = if options.show_logo {
         match options.logo_override.as_deref() {
@@ -848,6 +844,7 @@ pub fn generate_system_info(options: &SystemInfoOptions) -> Vec<String> {
 
     let mut result = Vec::new();
     let header_first = fields.first().is_some_and(|field| field.key == "header");
+    let info_lines = flatten_info_lines(&fields, show_logo && header_first);
     let info_offset = if show_logo && header_first { 2 } else { 0 };
     let max_lines = if show_logo {
         logo_lines.len().max(info_lines.len() + info_offset)
@@ -877,6 +874,24 @@ pub fn generate_system_info(options: &SystemInfoOptions) -> Vec<String> {
         }
     }
     result
+}
+
+fn flatten_info_lines(
+    fields: &[SystemInfoField],
+    suppress_logo_header_divider: bool,
+) -> Vec<String> {
+    let mut lines = Vec::new();
+    for field in fields {
+        if suppress_logo_header_divider && field.key == "header" {
+            if let Some(header) = field.line.lines().next() {
+                lines.push(header.to_string());
+                lines.push(String::new());
+            }
+        } else {
+            lines.extend(field.line.lines().map(str::to_string));
+        }
+    }
+    lines
 }
 
 fn pad_custom_logo_lines(lines: &mut [String]) {

@@ -135,6 +135,30 @@ fn logo_file_normalizes_crlf_tabs_and_ansi_sequences() {
 }
 
 #[test]
+fn logo_output_suppresses_header_divider_line() {
+    let output = neonfetch_command()
+        .args(["--fetch", "--no-packages"])
+        .output()
+        .expect("failed to run neonfetch binary");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!stdout.contains("-------"));
+}
+
+#[test]
+fn no_logo_output_keeps_header_divider_line() {
+    let output = neonfetch_command()
+        .args(["--fetch", "--no-logo", "--no-packages"])
+        .output()
+        .expect("failed to run neonfetch binary");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("-------"));
+}
+
+#[test]
 fn random_style_with_seed_is_reproducible_for_frame_output() {
     let first = neonfetch_command()
         .args(["--frame", "--style", "random", "--seed", "7"])
